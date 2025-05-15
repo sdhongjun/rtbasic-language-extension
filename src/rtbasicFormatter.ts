@@ -4,16 +4,20 @@ import { RtBasicParser } from './rtbasicParser';
 export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditProvider {
     private parser: RtBasicParser;
     
-    private uppercaseKeywords: string[];
-    private lowercaseKeywords: string[];
+    // 需要大写的关键字
+    private readonly uppercaseKeywords = [
+        'Global', 'Dim', 'Sub', 'End', 'Structure', 
+        'Then', 'Else', 'For', 'To', 'Next', 'While', 'Wend',
+        'Select', 'Case', 'Default', 'Return'
+    ];
+    
+    // 需要小写的关键字
+    private readonly lowercaseKeywords = [
+        'if', 'and', 'or', 'not', 'as', 'in'
+    ];
 
     constructor(parser: RtBasicParser) {
         this.parser = parser;
-        
-        // 从配置中读取关键字列表
-        const config = vscode.workspace.getConfiguration('rtbasic.formatting');
-        this.uppercaseKeywords = config.get<string[]>('uppercaseKeywords') || [];
-        this.lowercaseKeywords = config.get<string[]>('lowercaseKeywords') || [];
     }
     
     // 转换关键字大小写
