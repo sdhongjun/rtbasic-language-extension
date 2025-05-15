@@ -1,0 +1,146 @@
+{
+    "Global Variables": {
+        "prefix": "gdim",
+        "body": [
+            "Global Dim ${1:var1}, ${2:var2}${3: As ${4:Structure}}"
+        ],
+        "description": "Declare multiple global variables with optional structure type"
+    },
+    "Global Array": {
+        "prefix": "gdima",
+        "body": [
+            "Global Dim ${1:arrayName}(${2:size})${3: As ${4:Structure}}"
+        ],
+        "description": "Declare a global array with optional structure type"
+    },
+    "File Variables": {
+        "prefix": "dim",
+        "body": [
+            "Dim ${1:var1}, ${2:var2}${3: As ${4:Structure}}"
+        ],
+        "description": "Declare multiple file-level variables with optional structure type"
+    },
+    "File Array": {
+        "prefix": "dima",
+        "body": [
+            "Dim ${1:arrayName}(${2:size})${3: As ${4:Structure}}"
+        ],
+        "description": "Declare a file-level array with optional structure type"
+    },
+    "Local Variables": {
+        "prefix": "local",
+        "body": [
+            "Local ${1:var1}, ${2:var2}${3: As ${4:Structure}}"
+        ],
+        "description": "Declare multiple local variables with optional structure type"
+    },
+    "Local Array": {
+        "prefix": "locala",
+        "body": [
+            "Local ${1:arrayName}(${2:size})${3: As ${4:Structure}}"
+        ],
+        "description": "Declare a local array with optional structure type"
+    },
+    "Structure Members": {
+        "prefix": "member",
+        "body": [
+            "Dim ${1:member1}, ${2:member2}${3: As ${4:Structure}}"
+        ],
+        "description": "Define multiple structure members with optional structure type"
+    },
+    "Structure Array": {
+        "prefix": "membera",
+        "body": [
+            "Dim ${1:memberName}(${2:size})${3: As ${4:Structure}}"
+        ],
+        "description": "Define a structure array member with optional structure type"
+    },
+    "Parameters": {
+        "prefix": "param",
+        "body": [
+            "${1:param1}, ${2:param2}${3: As ${4:Structure}}"
+        ],
+        "description": "Define multiple parameters with optional structure type"
+    },
+    "Array Parameter": {
+        "prefix": "parama",
+        "body": [
+            "${1:paramName}(${2:size})${3: As ${4:Structure}}"
+        ],
+        "description": "Define an array parameter with optional structure type"
+    },
+    "If Statement": {
+        "prefix": "if",
+        "body": [
+            "If ${1:condition} Then",
+            "\t${0}",
+            "End If"
+        ],
+        "description": "If statement"
+    },
+    "If-Else Statement": {
+        "prefix": "ifelse",
+        "body": [
+            "If ${1:condition} Then",
+            "\t${2}",
+            "Else",
+            "\t${0}",
+            "End If"
+        ],
+        "description": "If-Else statement"
+    },
+    "For Loop": {
+        "prefix": "for",
+        "body": [
+            "For ${1:i} = ${2:start} To ${3:end}",
+            "\t${0}",
+            "Next"
+        ],
+        "description": "For loop"
+    },
+    "While Loop": {
+        "prefix": "while",
+        "body": [
+            "While ${1:condition}",
+            "\t${0}",
+            "Wend"
+        ],
+        "description": "While loop"
+    },
+    "Do Loop": {
+        "prefix": "do",
+        "body": [
+            "Do",
+            "\t${0}",
+            "Loop Until ${1:condition}"
+        ],
+        "description": "Do loop"
+    },
+    "Sub": {
+        "prefix": "sub",
+        "body": [
+            "Sub ${1:subName}(${2:parameters})",
+            "\t${0}",
+            "End Sub"
+        ],
+        "description": "Define a subroutine"
+    },
+    "Global Sub": {
+        "prefix": "gsub",
+        "body": [
+            "Global Sub ${1:subName}(${2:parameters})",
+            "\t${0}",
+            "End Sub"
+        ],
+        "description": "Define a global subroutine"
+    },
+    "Structure": {
+        "prefix": "struct",
+        "body": [
+            "Global Structure ${1:structureName}",
+            "\t${0}",
+            "End Structure"
+        ],
+        "description": "Define a global structure"
+    }
+}
