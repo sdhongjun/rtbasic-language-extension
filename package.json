@@ -21,7 +21,34 @@
     "programming",
     "language"
   ],
-  "contributes": {
+      "contributes": {
+          "configuration": {
+              "title": "RtBasic",
+              "properties": {
+                  "rtbasic.formatting.uppercaseKeywords": {
+                      "type": "array",
+                      "items": {
+                          "type": "string"
+                      },
+                      "default": [
+                          "Global", "Dim", "Sub", "Function", "End", "Structure",
+                          "Then", "Else", "For", "To", "Next", "While", "Wend",
+                          "Select", "Case", "Default", "Return"
+                      ],
+                      "description": "List of keywords that should be formatted in uppercase"
+                  },
+                  "rtbasic.formatting.lowercaseKeywords": {
+                      "type": "array",
+                      "items": {
+                          "type": "string"
+                      },
+                      "default": [
+                          "if", "and", "or", "not", "as", "in"
+                      ],
+                      "description": "List of keywords that should be formatted in lowercase"
+                  }
+              }
+          },
     "languages": [
       {
         "id": "rtbasic",
@@ -47,8 +74,22 @@
         "command": "rtbasic.reloadSymbols",
         "title": "RtBasic: Reload Symbols",
         "category": "RtBasic"
+      },
+      {
+        "command": "rtbasic.formatDocument",
+        "title": "RtBasic: Format Document",
+        "category": "RtBasic"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorLangId == rtbasic",
+          "command": "rtbasic.formatDocument",
+          "group": "1_modification"
+        }
+      ]
+    },
     "snippets": [
       {
         "language": "rtbasic",

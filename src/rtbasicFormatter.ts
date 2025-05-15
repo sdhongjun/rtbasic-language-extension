@@ -3,9 +3,38 @@ import { RtBasicParser } from './rtbasicParser';
 
 export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditProvider {
     private parser: RtBasicParser;
+    
+    private uppercaseKeywords: string[];
+    private lowercaseKeywords: string[];
 
     constructor(parser: RtBasicParser) {
         this.parser = parser;
+        
+        // 从配置中读取关键字列表
+        const config = vscode.workspace.getConfiguration('rtbasic.formatting');
+        this.uppercaseKeywords = config.get<string[]>('uppercaseKeywords') || [];
+        this.lowercaseKeywords = config.get<string[]>('lowercaseKeywords') || [];
+    }
+    
+    // 转换关键字大小写
+    private transformKeywordCase(text: string): string {
+        // 处理需要大写的关键字
+        if (this.uppercaseKeywords && this.uppercaseKeywords.length > 0) {
+            this.uppercaseKeywords.forEach(keyword => {
+                const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
+                text = text.replace(regex, keyword);
+            });
+        }
+        
+        // 处理需要小写的关键字
+        if (this.lowercaseKeywords && this.lowercaseKeywords.length > 0) {
+            this.lowercaseKeywords.forEach(keyword => {
+                const regex = new RegExp(`\\b${keyword.toUpperCase()}\\b`, 'g');
+                text = text.replace(regex, keyword);
+            });
+        }
+        
+        return text;
     }
 
     public provideDocumentFormattingEdits(
@@ -20,7 +49,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
 
         for (let i = 0; i < document.lineCount; i++) {
             const line = document.lineAt(i);
-            let text = line.text;
+            let text = this.transformKeywordCase(line.text);
 
             // 处理If-Then在同一行的情况
             if (text.trim().toLowerCase().startsWith('if') && text.toLowerCase().includes('then')) {

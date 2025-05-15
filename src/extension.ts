@@ -167,6 +167,16 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // 注册格式化文档命令
+    context.subscriptions.push(
+        vscode.commands.registerCommand('rtbasic.formatDocument', () => {
+            const editor = vscode.window.activeTextEditor;
+            if (editor && editor.document.languageId === 'rtbasic') {
+                vscode.commands.executeCommand('editor.action.formatDocument');
+            }
+        })
+    );
+
     // 注册文档格式化提供者
     context.subscriptions.push(
         vscode.languages.registerDocumentFormattingEditProvider(
