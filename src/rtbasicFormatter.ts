@@ -23,20 +23,16 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     // 转换关键字大小写
     private transformKeywordCase(text: string): string {
         // 处理需要大写的关键字
-        if (this.uppercaseKeywords && this.uppercaseKeywords.length > 0) {
-            this.uppercaseKeywords.forEach(keyword => {
-                const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
-                text = text.replace(regex, keyword);
-            });
-        }
+        this.uppercaseKeywords.forEach(keyword => {
+            const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
+            text = text.replace(regex, keyword);
+        });
         
         // 处理需要小写的关键字
-        if (this.lowercaseKeywords && this.lowercaseKeywords.length > 0) {
-            this.lowercaseKeywords.forEach(keyword => {
-                const regex = new RegExp(`\\b${keyword.toUpperCase()}\\b`, 'g');
-                text = text.replace(regex, keyword);
-            });
-        }
+        this.lowercaseKeywords.forEach(keyword => {
+            const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
+            text = text.replace(regex, keyword);
+        });
         
         return text;
     }
@@ -77,7 +73,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
             }
 
             // 格式化多变量定义
-            if (text.trim().match(/^(Global\s+)?(Dim|Local)\s+.+,.+/)) {
+            if (text.trim().match(/^(Global\s+)?(Dim|Local)\s+.+,.+/i)) {
                 const parts = text.trim().split(/\s+/);
                 const modifier = parts[0] === 'Global' ? 'Global ' : '';
                 const keyword = parts[0] === 'Global' ? parts[1] : parts[0];
