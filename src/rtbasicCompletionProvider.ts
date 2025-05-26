@@ -12,7 +12,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         document: vscode.TextDocument,
         position: vscode.Position,
         token: vscode.CancellationToken,
-        context: vscode.CompletionContext
+        completionContext: vscode.CompletionContext
     ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
         const lineText = document.lineAt(position.line).text;
         const beforeCursor = lineText.substring(0, position.character);
@@ -32,8 +32,11 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             return this.provideSubParameterCompletions(subMatch[1], symbols.subs);
         }
 
+        // 确定当前上下文（sub函数和控制语句块）
+        const currentContext = this.getCurrentContext(document, position, symbols.subs, symbols.controlBlocks);
+        
         // 提供所有可用符号的补全
-        return this.provideSymbolCompletions(symbols);
+        return this.provideSymbolCompletions(symbols, currentContext.subName, currentContext.blockId);
     }
 
     private provideStructureMemberCompletions(
@@ -89,30 +92,99 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         });
     }
 
-    private provideSymbolCompletions(symbols: any): vscode.CompletionItem[] {
+    /**
+     * 确定当前位置所在的 sub 函数
+     * @param document 当前文档
+     * @param position 当前位置
+     * @param subs 所有 sub 函数
+     * @returns 当前位置所在的 sub 函数名，如果不在任何 sub 函数内则返回 undefined
+     */
+    private getCurrentContext(
+        document: vscode.TextDocument,
+        position: vscode.Position,
+        subs: RtBasicSub[],
+        controlBlocks: ControlBlock[]
+    ): { subName?: string; blockId?: string } {
+        // 确定当前所在的 sub 函数
+        let currentSub: string | undefined;
+        for (const sub of subs) {
+            if (sub.range && 
+                sub.range.start.line <= position.line && 
+                sub.range.end.line >= position.line) {
+                currentSub = sub.name;
+                break;
+            }
+        }
+
+        // 确定当前所在的 control block
+        let currentBlock: string | undefined;
+        for (const block of controlBlocks) {
+            if (block.range && 
+                block.range.start.line <= position.line && 
+                block.range.end.line >= position.line) {
+                currentBlock = `${block.type}-${block.range.start.line}`;
+                break;
+            }
+        }
+
+        return {
+            subName: currentSub,
+            blockId: currentBlock
+        };
+    }
+
+    private provideSymbolCompletions(
+        symbols: any, 
+        currentSub?: string, 
+        currentBlock?: string
+    ): vscode.CompletionItem[] {
         const completions: vscode.CompletionItem[] = [];
 
         // 添加变量补全
         symbols.variables.forEach((variable: RtBasicVariable) => {
-            const item = new vscode.CompletionItem(variable.name, vscode.CompletionItemKind.Variable);
-            item.detail = `(${variable.scope})`;
-            if (variable.isArray) {
-                item.detail += `(${variable.arraySize})`;
+            let shouldInclude = false;
+
+            if (variable.scope === 'block') {
+                // 控制语句块作用域的变量
+                shouldInclude = currentBlock === variable.parentBlock && 
+                              currentSub === variable.parentSub;
+            } else if (variable.scope === 'local') {
+                // 局部变量
+                shouldInclude = currentSub === variable.parentSub;
+            } else {
+                // 全局变量
+                shouldInclude = true;
             }
-            if (variable.structType) {
-                item.detail += ` As ${variable.structType}`;
+
+            if (shouldInclude) {
+                const item = new vscode.CompletionItem(variable.name, vscode.CompletionItemKind.Variable);
+                
+                // 设置变量详细信息
+                const scopeText = variable.scope === 'block' ? 'block-local' : variable.scope;
+                item.detail = `(${scopeText} variable)`;
+                if (variable.isArray) {
+                    item.detail += `(${variable.arraySize})`;
+                }
+                if (variable.structType) {
+                    item.detail += ` As ${variable.structType}`;
+                }
+                
+                // 设置文档说明
+                const docs = new vscode.MarkdownString();
+                if (variable.isArray) {
+                    docs.appendText(`Array size: ${variable.arraySize}\n`);
+                }
+                docs.appendText(`Scope: ${scopeText}`);
+                if (variable.parentSub) {
+                    docs.appendText(`\nDefined in: ${variable.parentSub}`);
+                }
+                if (variable.parentBlock) {
+                    docs.appendText(`\nBlock: ${variable.parentBlock}`);
+                }
+                item.documentation = docs;
+                
+                completions.push(item);
             }
-            
-            const docs = new vscode.MarkdownString();
-            if (variable.isArray) {
-                docs.appendText(`Array size: ${variable.arraySize}\n`);
-            }
-            docs.appendText(`Scope: ${variable.scope}`);
-            if (variable.parentSub) {
-                docs.appendText(`\nDefined in: ${variable.parentSub}`);
-            }
-            item.documentation = docs;
-            completions.push(item);
         });
 
         // 添加Sub补全

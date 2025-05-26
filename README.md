@@ -21,6 +21,7 @@ Colorization of RtBasic code elements including:
 - **Parameter Info**: See function parameter information as you type
 - **Quick Info**: Hover over symbols to see their definitions
 - **Structure Member Completion**: Automatic completion of structure members after typing a dot
+- **Block-Scoped Variables**: Smart suggestions for variables based on their scope in control blocks
 
 ### Navigation
 
@@ -43,8 +44,18 @@ The extension provides special support for the following RtBasic language elemen
 - **Global variables**: Defined with `Global Dim`
 - **File-level variables**: Defined with `Dim`
 - **Local variables**: Defined with `Local` inside functions
+- **Block-scoped variables**: Local variables defined within control structures (if, for, while, select)
 - **Global functions**: Defined with `Global Sub` or `Global Function`
 - **Global structures**: Defined with `Global Structure`
+
+## Variable Scoping
+
+RtBasic supports multiple levels of variable scoping:
+
+1. **Global scope**: Variables defined with `Global Dim` are accessible everywhere
+2. **File scope**: Variables defined with `Dim` at file level are accessible within the file
+3. **Subroutine scope**: Variables defined with `Local` in a subroutine are accessible within that subroutine
+4. **Block scope**: Variables defined with `Local` within control structures are only accessible within that block
 
 ## Example
 
@@ -59,10 +70,23 @@ Global Structure Person
     Dim age As Integer
 End Structure
 
-' Global subroutine
-Global Sub DisplayPerson(ByRef person As Person)
-    Print "Name: " + person.firstName + " " + person.lastName
-    Print "Age: " + CStr(person.age)
+' Global subroutine with block-scoped variables
+Global Sub ProcessPerson(ByRef person As Person)
+    Local result = True
+    
+    If person.age >= 18 Then
+        Local isAdult = True  ' This variable is only accessible within the If block
+        Print "Adult: " + person.firstName + " " + person.lastName
+    Else
+        Local isChild = True  ' This variable is only accessible within the Else block
+        Print "Minor: " + person.firstName + " " + person.lastName
+    End If
+    
+    ' Block-scoped variables in loops
+    For i = 1 To 3
+        Local counter = i  ' This variable is only accessible within the For loop
+        Print "Counter: " + CStr(counter)
+    Next i
 End Sub
 ```
 
@@ -90,6 +114,10 @@ This extension contributes the following settings:
 - Some advanced VB syntax features are not yet supported.
 
 ## Release Notes
+
+### 0.0.2
+
+Added support for block-scoped variables in control structures (if, for, while, select).
 
 ### 0.0.1
 

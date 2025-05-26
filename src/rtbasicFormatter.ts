@@ -8,7 +8,9 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     private readonly uppercaseKeywords = [
         'Global', 'Dim', 'Sub', 'End', 'Structure', 
         'Then', 'Else', 'For', 'To', 'Next', 'While', 'Wend',
-        'Select', 'Case', 'Default', 'Return'
+        'Select', 'Case', 'Default', 'Return',
+        // 组合关键字
+        'End Sub', 'End If', 'End Structure'
     ];
     
     // 需要小写的关键字
@@ -22,14 +24,18 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     
     // 转换关键字大小写
     private transformKeywordCase(text: string): string {
+        // 按长度排序关键字，确保先处理较长的组合关键字
+        const sortedUppercaseKeywords = [...this.uppercaseKeywords].sort((a, b) => b.length - a.length);
+        const sortedLowercaseKeywords = [...this.lowercaseKeywords].sort((a, b) => b.length - a.length);
+        
         // 处理需要大写的关键字
-        this.uppercaseKeywords.forEach(keyword => {
+        sortedUppercaseKeywords.forEach(keyword => {
             const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
             text = text.replace(regex, keyword);
         });
         
         // 处理需要小写的关键字
-        this.lowercaseKeywords.forEach(keyword => {
+        sortedLowercaseKeywords.forEach(keyword => {
             const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
             text = text.replace(regex, keyword);
         });
@@ -72,24 +78,23 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
                 }
             }
 
-            // 格式化多变量定义
+            // 格式化多变量定义 - 只格式化关键字，不拆分行
             if (text.trim().match(/^(Global\s+)?(Dim|Local)\s+.+,.+/i)) {
                 const parts = text.trim().split(/\s+/);
-                const modifier = parts[0] === 'Global' ? 'Global ' : '';
-                const keyword = parts[0] === 'Global' ? parts[1] : parts[0];
-                const varsAndType = text.trim().substring(modifier.length + keyword.length).trim();
+                const isGlobal = parts[0].toLowerCase() === 'global';
+                const modifier = isGlobal ? 'Global ' : '';
+                const keyword = isGlobal ? this.transformKeywordCase(parts[1]) : this.transformKeywordCase(parts[0]);
                 
-                // 分割变量和类型
-                const [vars, typeDecl] = varsAndType.split(/\s+as\s+/i);
-                const variables = vars.split(',').map((v: string) => v.trim());
-                const type = typeDecl ? ` As ${typeDecl}` : '';
-
-                // 重新格式化为每行一个变量
-                const newLines = variables.map((v: string) => {
-                    return `${modifier}${keyword} ${v}${type}`;
-                });
-
-                edits.push(vscode.TextEdit.replace(line.range, newLines.join('\n')));
+                // 提取完整的变量声明部分
+                const keywordPos = text.toLowerCase().indexOf(isGlobal ? parts[1].toLowerCase() : parts[0].toLowerCase());
+                const keywordLength = isGlobal ? parts[1].length : parts[0].length;
+                const beforeKeyword = text.substring(0, keywordPos);
+                const afterKeyword = text.substring(keywordPos + keywordLength);
+                
+                // 构建新的格式化行，保留原始的变量声明和空格
+                const formattedLine = beforeKeyword + keyword + afterKeyword;
+                
+                edits.push(vscode.TextEdit.replace(line.range, formattedLine));
             }
 
             // 格式化结构体定义
