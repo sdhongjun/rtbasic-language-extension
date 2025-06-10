@@ -4,6 +4,7 @@ import { RtBasicDefinitionProvider } from './rtbasicDefinitionProvider';
 import { RtBasicCompletionProvider, RtBasicSignatureHelpProvider } from './rtbasicCompletionProvider';
 import { RtBasicHoverProvider } from './rtbasicHoverProvider';
 import { RtBasicDocumentFormatter } from './rtbasicFormatter';
+import { RtBasicDiagnosticProvider } from './rtbasicDiagnosticProvider';
 
 export function activate(context: vscode.ExtensionContext) {
     // 创建解析器实例
@@ -184,6 +185,9 @@ export function activate(context: vscode.ExtensionContext) {
             new RtBasicDocumentFormatter(parser)
         )
     );
+
+    // 注册诊断提供程序
+    new RtBasicDiagnosticProvider(context);
 }
 
 export function deactivate() {

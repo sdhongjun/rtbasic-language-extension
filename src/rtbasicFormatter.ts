@@ -8,9 +8,10 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     private readonly uppercaseKeywords = [
         'Global', 'Dim', 'Sub', 'End', 'Structure', 
         'Then', 'Else', 'For', 'To', 'Next', 'While', 'Wend',
-        'Select', 'Case', 'Default', 'Return',
+        'Select', 'Case', 'Default', 'Return', 'Function',
         // 组合关键字
-        'End Sub', 'End If', 'End Structure'
+        'End Sub', 'End If', 'End Structure', 'End Function',
+        'Global Sub'
     ];
     
     // 需要小写的关键字
@@ -81,13 +82,14 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
             // 格式化多变量定义 - 只格式化关键字，不拆分行
             if (text.trim().match(/^(Global\s+)?(Dim|Local)\s+.+,.+/i)) {
                 const parts = text.trim().split(/\s+/);
-                const isGlobal = parts[0].toLowerCase() === 'global';
-                const modifier = isGlobal ? 'Global ' : '';
-                const keyword = isGlobal ? this.transformKeywordCase(parts[1]) : this.transformKeywordCase(parts[0]);
+                const scopeModifier = parts[0].toLowerCase();
+                const isGlobal = scopeModifier === 'global';
+                const isFile = !isGlobal;
+                const keyword = (isGlobal || isFile) ? this.transformKeywordCase(parts[1]) : this.transformKeywordCase(parts[0]);
                 
                 // 提取完整的变量声明部分
-                const keywordPos = text.toLowerCase().indexOf(isGlobal ? parts[1].toLowerCase() : parts[0].toLowerCase());
-                const keywordLength = isGlobal ? parts[1].length : parts[0].length;
+                const keywordPos = text.toLowerCase().indexOf((isGlobal || isFile) ? parts[1].toLowerCase() : parts[0].toLowerCase());
+                const keywordLength = (isGlobal || isFile) ? parts[1].length : parts[0].length;
                 const beforeKeyword = text.substring(0, keywordPos);
                 const afterKeyword = text.substring(keywordPos + keywordLength);
                 
@@ -101,6 +103,29 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
             if (text.trim().startsWith('Global Structure')) {
                 const structName = text.trim().substring('Global Structure'.length).trim();
                 edits.push(vscode.TextEdit.replace(line.range, `Global Structure ${structName}`));
+            }
+
+            // 格式化函数定义
+            const subMatch = text.trim().match(/^(Global\s+)?(Sub|Function)\s+(\w+)\s*\((.*)\)(\s+As\s+\w+)?/i);
+            if (subMatch) {
+                const [, globalModifier, subType, subName, params, returnType] = subMatch;
+                const formattedGlobal = globalModifier ? 'Global ' : '';
+                const formattedSubType = this.transformKeywordCase(subType);
+                const formattedParams = params.split(',')
+                    .map(param => param.trim())
+                    .join(', ');
+                const formattedReturnType = returnType ? returnType.trim() : '';
+                
+                const formattedLine = `${formattedGlobal}${formattedSubType} ${subName}(${formattedParams})${formattedReturnType}`;
+                edits.push(vscode.TextEdit.replace(line.range, formattedLine));
+            }
+
+            // 格式化 End Sub/Function
+            const endSubMatch = text.trim().match(/^End\s+(Sub|Function)$/i);
+            if (endSubMatch) {
+                const [, subType] = endSubMatch;
+                const formattedLine = `End ${this.transformKeywordCase(subType)}`;
+                edits.push(vscode.TextEdit.replace(line.range, formattedLine));
             }
         }
 

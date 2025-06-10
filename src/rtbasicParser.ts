@@ -8,14 +8,18 @@ export interface RtBasicVariable {
   arraySize?: number;
   structType?: string;
   parentSub?: string;
-  parentBlock?: string; // 新增：所属控制语句块
+  parentBlock?: ControlBlock; // 修改：使用 ControlBlock 类型
 }
 
 // 新增：控制语句块类型
+export type ControlBlockType = "If" | "For" | "While" | "Select";
+
 export interface ControlBlock {
-  type: "if" | "for" | "while" | "select";
+  type: ControlBlockType;
   range: vscode.Range;
   parentSub?: string;
+  parentBlock?: ControlBlock; // 添加父控制块引用，用于嵌套控制块
+  variables?: RtBasicVariable[]; // 添加变量数组
 }
 
 export interface RtBasicSub {
@@ -49,10 +53,8 @@ export class RtBasicParser {
     variables: [],
     subs: [],
     structures: [],
+    controlBlocks: []
   };
-  
-  private controlBlocks: ControlBlock[] = []; // 新增：跟踪控制语句块
-  private currentControlBlock: ControlBlock | undefined; // 当前控制语句块
 
   constructor() {
     this.reset();
@@ -63,6 +65,7 @@ export class RtBasicParser {
       variables: [],
       subs: [],
       structures: [],
+      controlBlocks: []
     };
   }
 
@@ -71,6 +74,7 @@ export class RtBasicParser {
 
           let currentSub: RtBasicSub | undefined;
           let currentStructure: RtBasicStructure | undefined;
+          let activeControlBlocks: ControlBlock[] = [];
           let currentControlBlock: ControlBlock | undefined;
 
           for (let i = 0; i < document.lineCount; i++) {
@@ -79,28 +83,78 @@ export class RtBasicParser {
               const lineRange = new vscode.Range(i, 0, i, line.text.length);
 
               // 检查控制语句块开始
-              const blockStartMatch = text.match(/^(If|For|While|Select)\b/i);
+              const blockStartMatch = text.match(/^(If|For|While|Select)\b.*$/i);
               if (blockStartMatch) {
-                  currentControlBlock = {
-                      type: blockStartMatch[1].toLowerCase() as ControlBlock['type'],
+                  const blockType = blockStartMatch[1] as ControlBlockType;
+                  const newBlock: ControlBlock = {
+                      type: blockType,
                       range: lineRange,
-                      parentSub: currentSub?.name
+                      parentSub: currentSub?.name,
+                      variables: []
                   };
-                  this.controlBlocks.push(currentControlBlock);
+                  
+                  // 如果这是嵌套的控制块，设置父控制块
+                  if (currentControlBlock) {
+                      newBlock.parentBlock = currentControlBlock;
+                  }
+                  
+                  // 将当前控制块加入活动控制块栈
+                  activeControlBlocks.push(newBlock);
+                  currentControlBlock = newBlock;
               }
 
               // 检查控制语句块结束
-              const blockEndMatch = text.match(/^End\s+(If|For|While|Select)\b/i);
-              if (blockEndMatch && currentControlBlock?.type === blockEndMatch[1].toLowerCase()) {
-                  // 更新控制语句块范围
-                  currentControlBlock.range = new vscode.Range(
-                      currentControlBlock.range.start,
-                      lineRange.end
+              const blockEndMatch = text.match(/^(?:End\s+(If|Select)|Next|Wend)\b/i);
+              if (blockEndMatch && activeControlBlocks.length > 0) {
+                  const lastBlock = activeControlBlocks[activeControlBlocks.length - 1];
+                  const endType = blockEndMatch[1] || text.trim();
+                  
+                  // 检查结束类型是否匹配当前控制块
+                  const isMatching = (
+                      (endType.toLowerCase() === "if" && lastBlock.type === "If") ||
+                      (endType.toLowerCase() === "select" && lastBlock.type === "Select") ||
+                      (endType.toLowerCase() === "next" && lastBlock.type === "For") ||
+                      (endType.toLowerCase() === "wend" && lastBlock.type === "While")
                   );
-                  this.controlBlocks.pop();
-                  currentControlBlock = this.controlBlocks.length > 0 
-                      ? this.controlBlocks[this.controlBlocks.length - 1] 
-                      : undefined;
+                  
+                  if (isMatching) {
+                      // 更新控制语句块范围，包括结束行
+                      lastBlock.range = new vscode.Range(
+                          lastBlock.range.start,
+                          lineRange.end
+                      );
+                      
+                      // 收集控制块内的变量
+                      if (!lastBlock.variables) {
+                          lastBlock.variables = [];
+                      }
+                      
+                      // 查找属于此控制块的所有变量
+                      this.symbols.variables.forEach(variable => {
+                          if (variable.parentBlock === lastBlock) {
+                              lastBlock.variables!.push(variable);
+                          }
+                      });
+                      
+                      // 将完成的控制块添加到符号表中
+                      this.symbols.controlBlocks.push(lastBlock);
+                      
+                      // 从活动控制块栈中移除
+                      activeControlBlocks.pop();
+                      
+                      // 更新当前控制块为栈顶的控制块（如果有的话）
+                      currentControlBlock = activeControlBlocks.length > 0 
+                          ? activeControlBlocks[activeControlBlocks.length - 1] 
+                          : undefined;
+                          
+                      // 如果当前控制块存在，更新其范围以包含刚结束的子块
+                      if (currentControlBlock) {
+                          currentControlBlock.range = new vscode.Range(
+                              currentControlBlock.range.start,
+                              lineRange.end
+                          );
+                      }
+                  }
               }
 
       // 解析全局变量
@@ -137,6 +191,41 @@ export class RtBasicParser {
           });
         }
       }
+      
+      // 解析文件作用域变量（使用File关键字）
+      else if (text.toLowerCase().startsWith("file dim")) {
+        // 匹配数组变量: File Dim varName(size) [As type]
+        // 匹配文件变量: File Dim var1, var2 As Structure
+        const fileMatch = text.match(
+          /file\s+dim\s+([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
+        );
+        if (fileMatch) {
+          const varNames = fileMatch[1].split(",").map((name) => name.trim());
+          const structType = fileMatch[2];
+
+          varNames.forEach((varName) => {
+            // 检查是否是数组
+            const arrayMatch = varName.match(/(\w+)\s*\((\d+)\)/);
+            if (arrayMatch) {
+              this.symbols.variables.push({
+                name: arrayMatch[1],
+                range: new vscode.Range(line.range.start, line.range.end),
+                scope: "file",
+                isArray: true,
+                arraySize: parseInt(arrayMatch[2]),
+                structType: structType,
+              });
+            } else {
+              this.symbols.variables.push({
+                name: varName,
+                range: new vscode.Range(line.range.start, line.range.end),
+                scope: "file",
+                structType: structType,
+              });
+            }
+          });
+        }
+      }
 
       // 解析局部变量
       else if (text.toLowerCase().startsWith("local")) {
@@ -158,9 +247,7 @@ export class RtBasicParser {
                 arraySize: parseInt(arrayMatch[2]),
                 structType: structType,
                 parentSub: currentSub?.name,
-                parentBlock: currentControlBlock 
-                  ? `${currentControlBlock.type}-${currentControlBlock.range.start.line}` 
-                  : undefined,
+                parentBlock: currentControlBlock || undefined,
               });
             } else {
               this.symbols.variables.push({
@@ -169,9 +256,7 @@ export class RtBasicParser {
                 scope: currentControlBlock ? "block" : "local",
                 structType: structType,
                 parentSub: currentSub?.name,
-                parentBlock: currentControlBlock 
-                  ? `${currentControlBlock.type}-${currentControlBlock.range.start.line}` 
-                  : undefined,
+                parentBlock: currentControlBlock || undefined,
               });
             }
           });
@@ -222,6 +307,25 @@ export class RtBasicParser {
           };
           this.symbols.subs.push(sub);
           currentSub = sub;
+        }
+      }
+      
+      // 解析普通Sub
+      else if (text.toLowerCase().startsWith("sub")) {
+        const match = text.match(/sub\s+(\w+)\s*\((.*)\)/i);
+        if (match) {
+          const sub: RtBasicSub = {
+            name: match[1],
+            parameters: this.parseParameters(match[2]),
+            range: new vscode.Range(line.range.start, line.range.end),
+            isGlobal: false,
+          };
+          this.symbols.subs.push(sub);
+          currentSub = sub;
+          
+          // 重置控制块状态，因为进入了新的Sub
+          activeControlBlocks = [];
+          currentControlBlock = undefined;
         }
       }
 
@@ -279,6 +383,24 @@ export class RtBasicParser {
 
       // Sub结束
       else if (text.toLowerCase() === "end sub" && currentSub) {
+        // 更新当前Sub的范围，包含整个Sub的内容
+        currentSub.range = new vscode.Range(
+          currentSub.range.start,
+          lineRange.end
+        );
+        
+        // 清理所有未关闭的控制块
+        for (const block of activeControlBlocks) {
+          block.range = new vscode.Range(
+            block.range.start,
+            lineRange.end
+          );
+          this.symbols.controlBlocks.push(block);
+        }
+        
+        // 重置控制块状态
+        activeControlBlocks = [];
+        currentControlBlock = undefined;
         currentSub = undefined;
       }
     }
@@ -360,6 +482,20 @@ export class RtBasicParser {
         vscode.SymbolKind.Struct,
         "global",
         new vscode.Location(document.uri, struct.range)
+      );
+    }
+
+    // 检查控制块
+    // 注意：这里我们不是通过名称查找控制块，而是检查位置是否在控制块范围内
+    const controlBlock = this.symbols.controlBlocks.find(
+      (block) => block.range.contains(position)
+    );
+    if (controlBlock) {
+      return new vscode.SymbolInformation(
+        `${controlBlock.type} block`,
+        vscode.SymbolKind.Module,
+        controlBlock.parentSub || "file",
+        new vscode.Location(document.uri, controlBlock.range)
       );
     }
 

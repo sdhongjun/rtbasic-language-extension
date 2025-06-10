@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable } from './rtbasicParser';
+import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock } from './rtbasicParser';
 
 export class RtBasicCompletionProvider implements vscode.CompletionItemProvider {
     private parser: RtBasicParser;
@@ -144,16 +144,26 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         symbols.variables.forEach((variable: RtBasicVariable) => {
             let shouldInclude = false;
 
-            if (variable.scope === 'block') {
-                // 控制语句块作用域的变量
-                shouldInclude = currentBlock === variable.parentBlock && 
-                              currentSub === variable.parentSub;
-            } else if (variable.scope === 'local') {
-                // 局部变量
-                shouldInclude = currentSub === variable.parentSub;
-            } else {
-                // 全局变量
-                shouldInclude = true;
+            switch (variable.scope) {
+                case 'block':
+                    // 控制语句块作用域的变量
+                    shouldInclude = currentBlock === variable.parentBlock && 
+                                  currentSub === variable.parentSub;
+                    break;
+                case 'local':
+                    // 局部变量
+                    shouldInclude = currentSub === variable.parentSub;
+                    break;
+                case 'file':
+                    // 文件作用域变量
+                    shouldInclude = true;
+                    break;
+                case 'global':
+                    // 全局变量
+                    shouldInclude = true;
+                    break;
+                default:
+                    shouldInclude = false;
             }
 
             if (shouldInclude) {
