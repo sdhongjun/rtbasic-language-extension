@@ -19,3 +19,19 @@ dist/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Test files and directories
+test/
+src/test/
+*.test.ts
+*.spec.ts
+
+# VSIX package
+*.vsix
+
+# Coverage directory
+coverage/
+
+# Temporary files
+*.tmp
+*~

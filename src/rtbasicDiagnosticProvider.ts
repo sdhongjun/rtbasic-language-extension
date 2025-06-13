@@ -9,10 +9,12 @@ type VariableScope = 'global' | 'local' | 'file' | 'block';
 export class RtBasicDiagnosticProvider {
     private diagnosticCollection: vscode.DiagnosticCollection;
     private parser: RtBasicParser;
+    private workspaceManager: any; // 使用any类型，后续可以根据实际类型进行调整
 
-    constructor(context: vscode.ExtensionContext) {
+    constructor(context: vscode.ExtensionContext, workspaceManager: any) {
         this.diagnosticCollection = vscode.languages.createDiagnosticCollection('rtbasic');
         this.parser = new RtBasicParser();
+        this.workspaceManager = workspaceManager;
         
         // 注册事件监听器
         context.subscriptions.push(

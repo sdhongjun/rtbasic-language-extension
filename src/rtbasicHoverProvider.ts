@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
 import { RtBasicParser, RtBasicVariable, RtBasicStructure } from './rtbasicParser';
+import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
 
 export class RtBasicHoverProvider implements vscode.HoverProvider {
     private parser: RtBasicParser;
+    private workspaceManager: RtBasicWorkspaceManager;
 
-    constructor(parser: RtBasicParser) {
+    constructor(parser: RtBasicParser, workspaceManager: RtBasicWorkspaceManager) {
         this.parser = parser;
+        this.workspaceManager = workspaceManager;
     }
 
     public provideHover(
@@ -19,7 +22,10 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         const word = document.getText(wordRange);
-        const symbols = this.parser.parse(document);
+        
+        // 获取当前文件的符号和合并的全局符号
+        const currentFileSymbols = this.parser.parse(document);
+        const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
 
         // 检查是否在结构体成员访问
         const lineText = document.lineAt(position.line).text;
@@ -30,33 +36,81 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             const structName = dotMatch[1];
             const memberName = word;
             
-            const structure = symbols.structures.find(s => s.name === structName);
+            // 首先在当前文件中查找结构体
+            let structure = currentFileSymbols.structures.find(s => s.name === structName);
+            let member = null;
+            let sourceFile = document.uri.fsPath;
+            
             if (structure) {
-                const member = structure.members.find(m => m.name === memberName);
-                if (member) {
-                    let memberCode = `Dim ${member.name}`;
-                    if (member.isArray) {
-                        memberCode += `(${member.arraySize})`;
+                member = structure.members.find(m => m.name === memberName);
+            } else {
+                // 如果当前文件中没有找到，则在全局符号中查找
+                structure = mergedSymbols.structures.find(s => s.name === structName);
+                
+                if (structure) {
+                    member = structure.members.find(m => m.name === memberName);
+                    
+                    // 查找结构体的源文件
+                    for (const [filePath, fileSymbols] of Object.entries(this.workspaceManager.getAllFileSymbols())) {
+                        const fileStruct = fileSymbols.structures.find(s => s.name === structName);
+                        if (fileStruct) {
+                            sourceFile = filePath;
+                            break;
+                        }
                     }
-                    
-                    const content = new vscode.MarkdownString()
-                        .appendCodeblock(memberCode, 'rtbasic')
-                        .appendText(`\n\nMember of structure ${structure.name}`);
-                    
-                    if (member.isArray) {
-                        content.appendText(`\nArray with size ${member.arraySize}`);
-                    }
-                    
-                    return new vscode.Hover(content, wordRange);
                 }
+            }
+
+            if (structure && member) {
+                let memberCode = `Dim ${member.name}`;
+                if (member.isArray) {
+                    memberCode += `(${member.arraySize})`;
+                }
+                if (member.type) {
+                    memberCode += ` As ${member.type}`;
+                }
+                
+                const content = new vscode.MarkdownString()
+                    .appendCodeblock(memberCode, 'rtbasic')
+                    .appendText(`\n\nMember of structure ${structure.name}`);
+                
+                if (sourceFile !== document.uri.fsPath) {
+                    content.appendText(`\nDefined in ${this.getRelativePath(sourceFile)}`);
+                }
+                
+                if (member.isArray) {
+                    content.appendText(`\nArray with size ${member.arraySize}`);
+                }
+                
+                return new vscode.Hover(content, wordRange);
             }
         }
 
         // 检查变量
-        const variable = symbols.variables.find(v => v.name === word);
+        // 首先检查当前文件中的局部变量和文件变量
+        let variable = currentFileSymbols.variables.find(v => 
+            v.name === word && (v.scope === 'local' || v.scope === 'file')
+        );
+        
+        // 如果没有找到局部变量或文件变量，则检查全局变量
+        if (!variable) {
+            // 先检查当前文件中的全局变量
+            variable = currentFileSymbols.variables.find(v => 
+                v.name === word && v.scope === 'global'
+            );
+            
+            // 如果当前文件中没有找到全局变量，则在合并的符号中查找
+            if (!variable) {
+                variable = mergedSymbols.variables.find(v => 
+                    v.name === word && v.scope === 'global'
+                );
+            }
+        }
+        
         if (variable) {
             let content = new vscode.MarkdownString();
             let varCode = '';
+            let sourceFile = variable.sourceFile || document.uri.fsPath;
             
             switch (variable.scope) {
                 case 'global':
@@ -64,17 +118,26 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     if (variable.isArray) {
                         varCode += `(${variable.arraySize})`;
                     }
-                    if (variable.structType) {
+                    if (variable.type) {
+                        varCode += ` As ${variable.type}`;
+                    } else if (variable.structType) {
                         varCode += ` As ${variable.structType}`;
                     }
                     content.appendCodeblock(varCode, 'rtbasic');
+                    
+                    // 如果全局变量来自其他文件，显示源文件信息
+                    if (sourceFile !== document.uri.fsPath) {
+                        content.appendText(`\n\nDefined in ${this.getRelativePath(sourceFile)}`);
+                    }
                     break;
                 case 'local':
                     varCode = `Local ${variable.name}`;
                     if (variable.isArray) {
                         varCode += `(${variable.arraySize})`;
                     }
-                    if (variable.structType) {
+                    if (variable.type) {
+                        varCode += ` As ${variable.type}`;
+                    } else if (variable.structType) {
                         varCode += ` As ${variable.structType}`;
                     }
                     content.appendCodeblock(varCode, 'rtbasic');
@@ -87,7 +150,9 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     if (variable.isArray) {
                         varCode += `(${variable.arraySize})`;
                     }
-                    if (variable.structType) {
+                    if (variable.type) {
+                        varCode += ` As ${variable.type}`;
+                    } else if (variable.structType) {
                         varCode += ` As ${variable.structType}`;
                     }
                     content.appendCodeblock(varCode, 'rtbasic');
@@ -103,26 +168,56 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         // 检查Sub
-        const sub = symbols.subs.find(s => s.name === word);
+        // 首先检查当前文件中的非全局Sub
+        let sub = currentFileSymbols.subs.find(s => s.name === word && !s.isGlobal);
+        let sourceFile = document.uri.fsPath;
+        
+        // 如果没有找到非全局Sub，则检查全局Sub
+        if (!sub) {
+            // 先检查当前文件中的全局Sub
+            sub = currentFileSymbols.subs.find(s => s.name === word && s.isGlobal);
+            
+            // 如果当前文件中没有找到全局Sub，则在合并的符号中查找
+            if (!sub) {
+                sub = mergedSymbols.subs.find(s => s.name === word && s.isGlobal);
+                
+                // 查找Sub的源文件
+                if (sub && sub.sourceFile) {
+                    sourceFile = sub.sourceFile;
+                }
+            }
+        }
+        
         if (sub) {
-                            const params = sub.parameters.map(p => {
-                                let paramStr = p.name;
-                                if (p.isArray) {
-                                    paramStr += `(${p.arraySize})`;
-                                }
-                                return paramStr;
-                            }).join(', ');
+            const params = sub.parameters.map(p => {
+                let paramStr = p.name;
+                if (p.type) {
+                    paramStr += ` As ${p.type}`;
+                }
+                if (p.isArray) {
+                    paramStr += `(${p.arraySize})`;
+                }
+                return paramStr;
+            }).join(', ');
             
             const content = new vscode.MarkdownString()
                 .appendCodeblock(
-                    `${sub.isGlobal ? 'Global ' : ''}Sub ${sub.name}(${params})`, 
+                    `${sub.isGlobal ? 'Global ' : ''}Sub ${sub.name}(${params})${sub.returnType ? ` As ${sub.returnType}` : ''}`, 
                     'rtbasic'
                 );
+            
+            // 如果Sub来自其他文件，显示源文件信息
+            if (sourceFile !== document.uri.fsPath) {
+                content.appendText(`\n\nDefined in ${this.getRelativePath(sourceFile)}`);
+            }
             
             if (sub.parameters.length > 0) {
                 content.appendText('\n\n**Parameters:**\n');
                 sub.parameters.forEach(param => {
                     let paramDesc = `- \`${param.name}\``;
+                    if (param.type) {
+                        paramDesc += ` (${param.type})`;
+                    }
                     if (param.isArray) {
                         paramDesc += ` (array size: ${param.arraySize})`;
                     }
@@ -134,7 +229,20 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         // 检查结构体
-        const struct = symbols.structures.find(s => s.name === word);
+        // 首先在当前文件中查找结构体
+        let struct = currentFileSymbols.structures.find(s => s.name === word);
+        sourceFile = document.uri.fsPath;
+        
+        // 如果当前文件中没有找到，则在全局符号中查找
+        if (!struct) {
+            struct = mergedSymbols.structures.find(s => s.name === word);
+            
+            // 查找结构体的源文件
+            if (struct && struct.sourceFile) {
+                sourceFile = struct.sourceFile;
+            }
+        }
+        
         if (struct) {
             const membersCode = struct.members.map(m => {
                 let memberStr = `    Dim ${m.name}`;
@@ -153,10 +261,18 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     'rtbasic'
                 );
             
+            // 如果结构体来自其他文件，显示源文件信息
+            if (sourceFile !== document.uri.fsPath) {
+                content.appendText(`\n\nDefined in ${this.getRelativePath(sourceFile)}`);
+            }
+            
             if (struct.members.length > 0) {
                 content.appendText('\n\n**Members:**\n');
                 struct.members.forEach(member => {
                     let memberDesc = `- \`${member.name}\``;
+                    if (member.type) {
+                        memberDesc += ` (${member.type})`;
+                    }
                     if (member.isArray) {
                         memberDesc += ` (array size: ${member.arraySize})`;
                     }
@@ -168,5 +284,26 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         return null;
+    }
+    
+    /**
+     * 获取文件的相对路径
+     * @param filePath 完整文件路径
+     * @returns 相对于工作区的路径
+     */
+    private getRelativePath(filePath: string): string {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) {
+            return filePath;
+        }
+        
+        for (const folder of workspaceFolders) {
+            const relativePath = vscode.workspace.asRelativePath(filePath, false);
+            if (relativePath !== filePath) {
+                return relativePath;
+            }
+        }
+        
+        return filePath;
     }
 }

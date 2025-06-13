@@ -7,8 +7,10 @@ export interface RtBasicVariable {
   isArray?: boolean;
   arraySize?: number;
   structType?: string;
+  type?: string;
   parentSub?: string;
-  parentBlock?: ControlBlock; // 修改：使用 ControlBlock 类型
+  parentBlock?: ControlBlock;
+  sourceFile?: string;
 }
 
 // 新增：控制语句块类型
@@ -27,18 +29,23 @@ export interface RtBasicSub {
   parameters: RtBasicParameter[];
   range: vscode.Range;
   isGlobal: boolean;
+  returnType?: string;
+  sourceFile?: string;
 }
 
 export interface RtBasicParameter {
   name: string;
   isArray?: boolean;
   arraySize?: number;
+  type?: string;
+  description?: string;
 }
 
 export interface RtBasicStructure {
   name: string;
   members: RtBasicVariable[];
   range: vscode.Range;
+  sourceFile?: string;
 }
 
 export interface RtBasicSymbol {

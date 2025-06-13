@@ -5,10 +5,14 @@ import { RtBasicCompletionProvider, RtBasicSignatureHelpProvider } from './rtbas
 import { RtBasicHoverProvider } from './rtbasicHoverProvider';
 import { RtBasicDocumentFormatter } from './rtbasicFormatter';
 import { RtBasicDiagnosticProvider } from './rtbasicDiagnosticProvider';
+import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
 
 export function activate(context: vscode.ExtensionContext) {
     // 创建解析器实例
     const parser = new RtBasicParser();
+    
+    // 创建工作区管理器
+    const workspaceManager = new RtBasicWorkspaceManager(parser);
     
     // 注册语言功能提供者
     const selector = { language: 'rtbasic', scheme: 'file' };
@@ -17,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerDefinitionProvider(
             selector,
-            new RtBasicDefinitionProvider(parser)
+            new RtBasicDefinitionProvider(parser, workspaceManager)
         )
     );
 
@@ -25,7 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
             selector,
-            new RtBasicCompletionProvider(parser),
+            new RtBasicCompletionProvider(parser, workspaceManager),
             '.', '(' // 触发字符
         )
     );
@@ -34,7 +38,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerSignatureHelpProvider(
             selector,
-            new RtBasicSignatureHelpProvider(parser),
+            new RtBasicSignatureHelpProvider(parser, workspaceManager),
             '(', ',' // 触发字符
         )
     );
@@ -43,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.languages.registerHoverProvider(
             selector,
-            new RtBasicHoverProvider(parser)
+            new RtBasicHoverProvider(parser, workspaceManager)
         )
     );
 
@@ -134,7 +138,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     // 监听文档变化事件，以更新解析结果
     let timeout: NodeJS.Timeout | undefined = undefined;
-    const documentChangeHandler = (document: vscode.TextDocument) => {
+    const documentChangeHandler = async (document: vscode.TextDocument) => {
         if (document.languageId !== 'rtbasic') {
             return;
         }
@@ -144,8 +148,10 @@ export function activate(context: vscode.ExtensionContext) {
             timeout = undefined;
         }
 
-        timeout = setTimeout(() => {
+        timeout = setTimeout(async () => {
             parser.parse(document);
+            // 更新工作区管理器中的文件符号
+            await workspaceManager.parseFile(document.uri);
         }, 500);
     };
 
@@ -153,18 +159,53 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidChangeTextDocument(e => documentChangeHandler(e.document))
     );
 
+    // 监听文件创建和删除事件
+    context.subscriptions.push(
+        vscode.workspace.onDidCreateFiles(async (e) => {
+            for (const file of e.files) {
+                if (file.fsPath.endsWith('.bas')) {
+                    await workspaceManager.parseFile(file);
+                }
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.workspace.onDidDeleteFiles((e) => {
+            for (const file of e.files) {
+                if (file.fsPath.endsWith('.bas')) {
+                    workspaceManager.removeFile(file);
+                }
+            }
+        })
+    );
+
     // 初始化当前打开的文档
     if (vscode.window.activeTextEditor) {
         documentChangeHandler(vscode.window.activeTextEditor.document);
     }
 
+    // 初始扫描工作区
+    workspaceManager.scanWorkspace().then(() => {
+        vscode.window.showInformationMessage('RTBasic 工作区扫描完成');
+    });
+
     // 注册命令
     context.subscriptions.push(
-        vscode.commands.registerCommand('rtbasic.reloadSymbols', () => {
+        vscode.commands.registerCommand('rtbasic.reloadSymbols', async () => {
             if (vscode.window.activeTextEditor) {
                 parser.parse(vscode.window.activeTextEditor.document);
-                vscode.window.showInformationMessage('RtBasic symbols reloaded');
+                await workspaceManager.parseFile(vscode.window.activeTextEditor.document.uri);
+                vscode.window.showInformationMessage('RTBasic 符号已重新加载');
             }
+        })
+    );
+
+    // 注册扫描工作区命令
+    context.subscriptions.push(
+        vscode.commands.registerCommand('rtbasic.scanWorkspace', async () => {
+            await workspaceManager.scanWorkspace();
+            vscode.window.showInformationMessage('RTBasic 工作区扫描完成');
         })
     );
 
@@ -187,7 +228,7 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     // 注册诊断提供程序
-    new RtBasicDiagnosticProvider(context);
+    new RtBasicDiagnosticProvider(context, workspaceManager);
 }
 
 export function deactivate() {
