@@ -43,6 +43,9 @@ Global Sub Main()
     ' Initialize points
     point1.x = 10 : point1.y = 20
     point2.x = 30 : point2.y = 40
+
+    Local a as MyStruct
+    a.name = "John"
     
     ' Process points
     ProcessPoints(point1, point2)

@@ -326,7 +326,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         // 添加当前文件中的结构体补全
         currentFileSymbols.structures.forEach((struct: RtBasicStructure) => {
             const item = new vscode.CompletionItem(struct.name, vscode.CompletionItemKind.Struct);
-            item.detail = `(global structure) ${struct.name}`;
+            item.detail = `(${struct.isGlobal ? 'global' : 'file'} structure) ${struct.name}`;
             
             const membersDoc = struct.members.map((m: any) => {
                 let memberStr = `    Dim ${m.name}`;
@@ -340,7 +340,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             }).join('\n');
             
             item.documentation = new vscode.MarkdownString()
-                .appendCodeblock(`Global Structure ${struct.name}\n${membersDoc}\nEnd Structure`, 'rtbasic');
+                .appendCodeblock(`${struct.isGlobal ? 'Global ' : ''}Structure ${struct.name}\n${membersDoc}\nEnd Structure`, 'rtbasic');
             
             completions.push(item);
         });
@@ -350,7 +350,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             // 确保不与当前文件中的结构体重复
             if (!currentFileSymbols.structures.some((s: RtBasicStructure) => s.name === struct.name)) {
                 const item = new vscode.CompletionItem(struct.name, vscode.CompletionItemKind.Struct);
-                item.detail = `(global structure) ${struct.name}`;
+                item.detail = `(${struct.isGlobal ? 'global' : 'file'} structure) ${struct.name}`;
                 
                 const membersDoc = struct.members.map((m: any) => {
                     let memberStr = `    Dim ${m.name}`;
@@ -364,7 +364,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
                 }).join('\n');
                 
                 const docs = new vscode.MarkdownString()
-                    .appendCodeblock(`Global Structure ${struct.name}\n${membersDoc}\nEnd Structure`, 'rtbasic');
+                    .appendCodeblock(`${struct.isGlobal ? 'Global ' : ''}Structure ${struct.name}\n${membersDoc}\nEnd Structure`, 'rtbasic');
                 
                 if (struct.sourceFile) {
                     docs.appendText(`\nDefined in: ${struct.sourceFile}`);

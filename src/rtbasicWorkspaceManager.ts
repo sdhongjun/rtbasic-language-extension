@@ -99,7 +99,7 @@ export class RtBasicWorkspaceManager {
             // 只合并全局符号（Global 作用域）
             mergedSymbols.variables.push(...symbols.variables.filter(v => v.scope === 'global'));
             mergedSymbols.subs.push(...symbols.subs.filter(s => s.isGlobal));
-            mergedSymbols.structures.push(...symbols.structures);
+            mergedSymbols.structures.push(...symbols.structures.filter(s => s.isGlobal));
         }
 
         return mergedSymbols;
@@ -156,7 +156,7 @@ export class RtBasicWorkspaceManager {
         }
 
         for (const structure of globalSymbols.structures) {
-            if (!mergedSymbols.structures.some(s => s.name === structure.name)) {
+            if (structure.isGlobal && !mergedSymbols.structures.some(s => s.name === structure.name)) {
                 mergedSymbols.structures.push(structure);
             }
         }

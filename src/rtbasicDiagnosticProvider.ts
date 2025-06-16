@@ -43,7 +43,7 @@ export class RtBasicDiagnosticProvider {
         const symbols = this.parser.parse(document);
         
         // 检查未闭合的控制块
-        this.checkUnclosedBlocks(symbols.controlBlocks, diagnostics);
+        this.checkUnclosedBlocks(symbols.controlBlocks, diagnostics, document);
         
         // 检查控制块类型匹配
         this.checkBlockTypeMatching(symbols.controlBlocks, diagnostics);
@@ -55,10 +55,25 @@ export class RtBasicDiagnosticProvider {
         this.diagnosticCollection.set(document.uri, diagnostics);
     }
 
-    private checkUnclosedBlocks(blocks: ControlBlock[], diagnostics: vscode.Diagnostic[]) {
-        const unclosedBlocks = blocks.filter(block => 
-            block.range.start.line === block.range.end.line
-        );
+    private checkUnclosedBlocks(blocks: ControlBlock[], diagnostics: vscode.Diagnostic[], document: vscode.TextDocument) {
+        const unclosedBlocks = blocks.filter(block => {
+            // 如果是单行if语句，不应该被标记为未闭合
+            if (block.type === 'If' && block.range.start.line === block.range.end.line) {
+                // 获取该行的文本内容
+                const lineText = document.lineAt(block.range.start.line).text;
+                // 检查是否是单行if语句（if与then在同一行且then后有非注释语句）
+                const ifThenMatch = lineText.match(/^If\b.*\bThen\b\s+(.+)$/i);
+                if (ifThenMatch) {
+                    const afterThen = ifThenMatch[1].trim();
+                    // 如果then后有非注释语句，则认为是单行if语句，不需要End If
+                    if (afterThen && !afterThen.startsWith("'") && !afterThen.startsWith("REM")) {
+                        return false;
+                    }
+                }
+            }
+            // 对于其他类型的控制块或多行if语句，如果开始行和结束行相同，则认为是未闭合的
+            return block.range.start.line === block.range.end.line;
+        });
         
         for (const block of unclosedBlocks) {
             diagnostics.push(new vscode.Diagnostic(
@@ -75,10 +90,10 @@ export class RtBasicDiagnosticProvider {
         for (const block of blocks) {
             if (this.isBlockStart(block.type)) {
                 // 检查嵌套层级
-                if (blockStack.length > 10) {
+                if (blockStack.length > 100) {
                     diagnostics.push(new vscode.Diagnostic(
                         block.range,
-                        `控制块嵌套层级过深（超过10层）`,
+                        `控制块嵌套层级过深（超过100层）`,
                         vscode.DiagnosticSeverity.Warning
                     ));
                 }
