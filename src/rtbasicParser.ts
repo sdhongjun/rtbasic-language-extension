@@ -23,6 +23,7 @@ export interface ControlBlock {
   parentBlock?: ControlBlock; // 添加父控制块引用，用于嵌套控制块
   variables?: RtBasicVariable[]; // 添加变量数组
   isSingleLine?: boolean; // 标记是否为单行控制块，如单行if语句
+  hasEndToken?: boolean; // 标记是否已找到结束标记
 }
 
 export interface RtBasicSub {
@@ -76,6 +77,8 @@ export class RtBasicParser {
   private static readonly SELECT_END_REGEX = /^End\s+Select\b/i;
   private static readonly FOR_END_REGEX = /^Next\b/i;
   private static readonly WHILE_END_REGEX = /^Wend\b/i;
+  private static readonly ELSEIF_REGEX = /^ElseIf\b.*?\bThen\b/i;
+  private static readonly ELSE_REGEX = /^Else\b/i;
   private static readonly GLOBAL_DIM_REGEX = /global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i;
   private static readonly DIM_REGEX = /dim\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i;
   private static readonly LOCAL_REGEX = /local\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i;
@@ -111,6 +114,7 @@ export class RtBasicParser {
     let currentStructure: RtBasicStructure | undefined;
     let activeControlBlocks: ControlBlock[] = [];
     let currentControlBlock: ControlBlock | undefined;
+    let lastSingleLineIfBlock: ControlBlock | undefined; // 跟踪最后一个单行If/ElseIf块
 
     for (let i = 0; i < document.lineCount; i++) {
       const line = document.lineAt(i);
@@ -129,6 +133,89 @@ export class RtBasicParser {
           range: lineRange,
           sourceFile: document.uri.fsPath
         });
+        continue;
+      }
+
+      // 检查是否是ElseIf或Else语句
+      if (RtBasicParser.ELSEIF_REGEX.test(text) || RtBasicParser.ELSE_REGEX.test(text)) {
+        // 检查是否是单行ElseIf语句
+        const blockStartInfo = this.detectControlBlockStart(text);
+        const isSingleLineElseIf = blockStartInfo && blockStartInfo.blockType === "If" && 
+                                  blockStartInfo.isSingleLine && RtBasicParser.ELSEIF_REGEX.test(text);
+        const isElse = RtBasicParser.ELSE_REGEX.test(text);
+        
+        // 处理单行ElseIf语句
+        if (isSingleLineElseIf) {
+          // 如果前一行是单行If/ElseIf，则这个单行ElseIf与它关联
+          if (lastSingleLineIfBlock) {
+            // 创建一个新的单行ElseIf块
+            const elseIfBlock: ControlBlock = {
+              type: "If",
+              range: lineRange,
+              parentSub: currentSub?.name,
+              parentBlock: lastSingleLineIfBlock.parentBlock, // 与前一个单行If块共享同一个父块
+              variables: [],
+              isSingleLine: true,
+              hasEndToken: true // 单行ElseIf语句不需要结束标记
+            };
+            
+            // 将新块添加到符号表
+            this.symbols.controlBlocks.push(elseIfBlock);
+            
+            // 更新最后一个单行If块
+            lastSingleLineIfBlock = elseIfBlock;
+            
+            continue;
+          }
+        }
+        
+        // 处理Else语句
+        if (isElse) {
+          // 如果前一行是单行If/ElseIf，则这个Else与它关联
+          if (lastSingleLineIfBlock) {
+            // 创建一个Else块（不是单行的，因为Else没有条件）
+            const elseBlock: ControlBlock = {
+              type: "If", // 仍然是If类型的一部分
+              range: lineRange,
+              parentSub: currentSub?.name,
+              parentBlock: lastSingleLineIfBlock.parentBlock, // 与前一个单行If块共享同一个父块
+              variables: [],
+              isSingleLine: false,
+              hasEndToken: true // Else也需要标记为已闭合，因为它不需要额外的End If
+            };
+            
+            // 将新块添加到符号表
+            this.symbols.controlBlocks.push(elseBlock);
+            
+            // 重置最后一个单行If块，因为Else后面不能再有ElseIf
+            lastSingleLineIfBlock = undefined;
+            
+            continue;
+          }
+        }
+        
+        // 如果有活动的控制块，并且最近的控制块是If块
+        if (activeControlBlocks.length > 0) {
+          // 从栈顶向下查找最近的If块
+          for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+            const block = activeControlBlocks[i];
+            if (block.type === "If" && !block.isSingleLine) {
+              // 更新If块的范围以包含ElseIf/Else语句
+              block.range = new vscode.Range(
+                block.range.start,
+                lineRange.end
+              );
+              
+              // 标记ElseIf/Else为已闭合，因为它们不需要额外的End If
+              if (RtBasicParser.ELSEIF_REGEX.test(text) || RtBasicParser.ELSE_REGEX.test(text)) {
+                block.hasEndToken = true;
+              }
+              
+              break;
+            }
+          }
+        }
+        
         continue;
       }
 
@@ -389,7 +476,8 @@ export class RtBasicParser {
       range: lineRange,
       parentSub: currentSub?.name,
       variables: [],
-      isSingleLine
+      isSingleLine,
+      hasEndToken: isSingleLine // 单行if语句不需要结束标记，所以hasEndToken为true
     };
 
     if (currentControlBlock) {
@@ -440,6 +528,11 @@ export class RtBasicParser {
    * 检查控制块结束类型是否匹配
    */
   private isMatchingBlockEnd(endType: string, blockType: ControlBlockType): boolean {
+    // 处理 "End If" 的情况，将其转换为 "if"
+    if (endType.toLowerCase() === 'end if') {
+      endType = 'if';
+    }
+    
     const endTypeMap: Record<string, ControlBlockType> = {
       'if': 'If',
       'select': 'Select',
@@ -469,13 +562,41 @@ export class RtBasicParser {
           const commentPos = afterThen.indexOf("'");
           const actualStatement = commentPos >= 0 ? afterThen.substring(0, commentPos).trim() : afterThen;
           
-          // 如果实际语句不为空，则这是一个单行if语句
+          // 如果实际语句不为空，并且不包含 End If，则这是一个单行if语句
+          if (actualStatement && !RtBasicParser.IF_END_REGEX.test(actualStatement)) {
+            isSingleLine = true;
+          }
+        }
+      }
+      
+      return { blockType: "If", isSingleLine };
+    }
+    
+    // 检查 ElseIf 语句
+    const elseIfThenMatch = text.match(RtBasicParser.ELSEIF_REGEX);
+    if (elseIfThenMatch) {
+      let isSingleLine = false;
+      
+      // 提取 Then 后面的内容
+      const thenIndex = text.toLowerCase().indexOf("then");
+      if (thenIndex >= 0 && thenIndex + 4 < text.length) {
+        const afterThen = text.substring(thenIndex + 4).trim();
+        
+        // 检查 then 后是否有实际语句（不是空白且不以注释开头）
+        if (afterThen && !afterThen.startsWith("'") && !afterThen.toLowerCase().startsWith("rem ")) {
+          // 检查是否有注释，如果有，提取注释前的实际语句
+          const commentPos = afterThen.indexOf("'");
+          const actualStatement = commentPos >= 0 ? afterThen.substring(0, commentPos).trim() : afterThen;
+          
+          // 如果实际语句不为空，则这是一个单行ElseIf语句
           if (actualStatement) {
             isSingleLine = true;
           }
         }
       }
       
+      // 注意：ElseIf 不是一个新的控制块，而是 If 块的一部分
+      // 我们返回 "If" 作为块类型，以便与现有的 If 块关联
       return { blockType: "If", isSingleLine };
     }
     
@@ -506,19 +627,43 @@ export class RtBasicParser {
       return undefined;
     }
 
+    // 检查是否是ElseIf或Else语句
+    if (RtBasicParser.ELSEIF_REGEX.test(text) || RtBasicParser.ELSE_REGEX.test(text)) {
+      // 检查是否是单行ElseIf语句
+      const blockStartInfo = this.detectControlBlockStart(text);
+      const isSingleLineElseIf = blockStartInfo && blockStartInfo.blockType === "If" && 
+                                blockStartInfo.isSingleLine && RtBasicParser.ELSEIF_REGEX.test(text);
+      
+      // 单行ElseIf语句不需要结束标记，它们自己就是完整的语句
+      // ElseIf和Else不是控制块的结束，而是If块的一部分
+      // 我们不需要在这里处理它们，因为它们不会导致控制块结束
+      return undefined;
+    }
+
+    // 定义结束标记和对应的类型
     const endMatches = [
-      { regex: RtBasicParser.IF_END_REGEX, type: "If" },
-      { regex: RtBasicParser.SELECT_END_REGEX, type: "Select" },
-      { regex: RtBasicParser.FOR_END_REGEX, type: "For" },
-      { regex: RtBasicParser.WHILE_END_REGEX, type: "While" }
+      { regex: RtBasicParser.IF_END_REGEX, endType: 'End If' },
+      { regex: RtBasicParser.SELECT_END_REGEX, endType: 'End Select' },
+      { regex: RtBasicParser.FOR_END_REGEX, endType: 'Next' },
+      { regex: RtBasicParser.WHILE_END_REGEX, endType: 'Wend' }
     ];
 
-    for (const { regex, type } of endMatches) {
-      if (text.match(regex)) {
-        // 查找最近的匹配块
+    // 查找匹配的结束标记
+    for (const { regex, endType } of endMatches) {
+      if (regex.test(text)) {
+        // 从栈顶向下查找匹配的块
         for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
           const block = activeControlBlocks[i];
-          if (block.type === type && (!block.isSingleLine || type !== "If")) {
+          
+          // 首先检查是否是单行语句
+          if (block.isSingleLine) {
+            continue; // 跳过单行语句，它们不需要结束标记
+          }
+          
+          // 检查类型是否匹配
+          if (this.isMatchingBlockEnd(endType, block.type)) {
+            // 标记已找到结束标记
+            block.hasEndToken = true;
             return { matchingBlock: block, matchingIndex: i };
           }
         }

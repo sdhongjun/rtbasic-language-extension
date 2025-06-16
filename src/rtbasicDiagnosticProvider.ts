@@ -48,6 +48,9 @@ export class RtBasicDiagnosticProvider {
         // 检查控制块类型匹配
         this.checkBlockTypeMatching(symbols.controlBlocks, diagnostics);
         
+        // 检查ElseIf和Else语句的位置
+        this.checkElseIfElseStatements(document, symbols.controlBlocks, diagnostics);
+        
         // 检查变量作用域
         this.checkVariableScopes(symbols.variables, symbols.controlBlocks, diagnostics);
         
@@ -55,24 +58,123 @@ export class RtBasicDiagnosticProvider {
         this.diagnosticCollection.set(document.uri, diagnostics);
     }
 
-    private checkUnclosedBlocks(blocks: ControlBlock[], diagnostics: vscode.Diagnostic[], document: vscode.TextDocument) {
-        const unclosedBlocks = blocks.filter(block => {
-            // 如果是单行if语句，不应该被标记为未闭合
-            if (block.type === 'If' && block.range.start.line === block.range.end.line) {
-                // 获取该行的文本内容
-                const lineText = document.lineAt(block.range.start.line).text;
-                // 检查是否是单行if语句（if与then在同一行且then后有非注释语句）
-                const ifThenMatch = lineText.match(/^If\b.*\bThen\b\s+(.+)$/i);
-                if (ifThenMatch) {
-                    const afterThen = ifThenMatch[1].trim();
-                    // 如果then后有非注释语句，则认为是单行if语句，不需要End If
-                    if (afterThen && !afterThen.startsWith("'") && !afterThen.startsWith("REM")) {
-                        return false;
+    private checkElseIfElseStatements(document: vscode.TextDocument, blocks: ControlBlock[], diagnostics: vscode.Diagnostic[]) {
+        let lastIfLine = -1;
+        let lastIfWasSingleLine = false;
+
+        // 遍历每一行检查ElseIf和Else语句
+        for (let i = 0; i < document.lineCount; i++) {
+            const line = document.lineAt(i);
+            const text = line.text.trim();
+            
+            // 检查是否是If语句
+            if (/^If\b/i.test(text)) {
+                lastIfLine = i;
+                lastIfWasSingleLine = /^If\b.*?\bThen\b.*[^'].*$/i.test(text) && 
+                                    !/^If\b.*?\bThen\b\s*$/i.test(text);
+            }
+            
+            // 检查是否是ElseIf或Else语句
+            if (/^ElseIf\b/i.test(text) || /^Else\b/i.test(text)) {
+                const isElseIf = /^ElseIf\b/i.test(text);
+                let foundValidIfBlock = false;
+                
+                // 检查是否是单行ElseIf语句
+                const isSingleLineElseIf = isElseIf && 
+                                         /^ElseIf\b.*?\bThen\b.*[^'].*$/i.test(text) && 
+                                         !/^ElseIf\b.*?\bThen\b\s*$/i.test(text);
+                
+                // 检查前一个语句的类型
+                if (i > 0) {
+                    const prevLine = document.lineAt(i - 1).text.trim();
+                    const isPrevSingleLine = /^(If|ElseIf)\b.*?\bThen\b.*[^'].*$/i.test(prevLine) && 
+                                          !/^(If|ElseIf)\b.*?\bThen\b\s*$/i.test(prevLine);
+                    
+                    if (isPrevSingleLine && !isSingleLineElseIf) {
+                        diagnostics.push(new vscode.Diagnostic(
+                            line.range,
+                            `单行If/ElseIf语句后面的${isElseIf ? 'ElseIf' : 'Else'}语句也必须是单行形式`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    }
+                }
+                
+                // 查找最近的未闭合的If块或检查是否跟随在单行If/ElseIf之后
+                if (lastIfWasSingleLine && i === lastIfLine + 1) {
+                    foundValidIfBlock = true;
+                } else {
+                    for (const block of blocks) {
+                        if (block.type === 'If' && !block.isSingleLine &&
+                            block.range.contains(line.range) && !block.hasEndToken) {
+                            foundValidIfBlock = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!foundValidIfBlock) {
+                    diagnostics.push(new vscode.Diagnostic(
+                        line.range,
+                        `${isElseIf ? 'ElseIf' : 'Else'} 语句必须在有效的 If 块内部或紧跟在单行If/ElseIf语句后`,
+                        vscode.DiagnosticSeverity.Error
+                    ));
+                }
+                
+                // 对于ElseIf语句，检查Then后面是否有语句
+                if (isElseIf) {
+                    const thenIndex = text.toLowerCase().indexOf("then");
+                    if (thenIndex >= 0) {
+                        const afterThen = text.substring(thenIndex + 4).trim();
+                        if (!afterThen || afterThen.startsWith("'") || afterThen.toLowerCase().startsWith("rem ")) {
+                            diagnostics.push(new vscode.Diagnostic(
+                                line.range,
+                                `单行ElseIf语句必须在Then后面包含语句`,
+                                vscode.DiagnosticSeverity.Error
+                            ));
+                        }
+                    } else {
+                        diagnostics.push(new vscode.Diagnostic(
+                            line.range,
+                            `ElseIf语句必须包含Then关键字`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
                     }
                 }
             }
-            // 对于其他类型的控制块或多行if语句，如果开始行和结束行相同，则认为是未闭合的
-            return block.range.start.line === block.range.end.line;
+        }
+    }
+
+    private checkUnclosedBlocks(blocks: ControlBlock[], diagnostics: vscode.Diagnostic[], document: vscode.TextDocument) {
+        const unclosedBlocks = blocks.filter(block => {
+            // 如果是单行if语句，不应该被标记为未闭合
+            if (block.type === 'If' && block.isSingleLine) {
+                return false;
+            }
+            
+            // 如果是同一行包含If和End If的情况，不应该被标记为未闭合
+            if (block.type === 'If' && block.range.start.line === block.range.end.line) {
+                const lineText = document.lineAt(block.range.start.line).text;
+                if (lineText.match(/\bEnd\s+If\b/i)) {
+                    return false;
+                }
+            }
+            
+            // 检查If块是否包含ElseIf/Else语句或End If
+            if (block.type === 'If') {
+                const blockText = document.getText(block.range);
+                // 如果有End If，则认为已闭合
+                if (blockText.match(/\bEnd\s+If\b/i)) {
+                    return false;
+                }
+                // 如果有ElseIf/Else且后面有End If，则认为已闭合
+                if ((blockText.match(/ElseIf\b/i) || blockText.match(/Else\b/i)) && 
+                    blockText.match(/\bEnd\s+If\b/i)) {
+                    return false;
+                }
+            }
+            
+            // 对于其他类型的控制块，如果没有结束标记，则认为是未闭合的
+            return !block.hasEndToken;
         });
         
         for (const block of unclosedBlocks) {
@@ -89,6 +191,11 @@ export class RtBasicDiagnosticProvider {
         
         for (const block of blocks) {
             if (this.isBlockStart(block.type)) {
+                // 单行if语句不需要匹配的结束标记
+                if (block.type === 'If' && block.isSingleLine) {
+                    continue;
+                }
+                
                 // 检查嵌套层级
                 if (blockStack.length > 100) {
                     diagnostics.push(new vscode.Diagnostic(
@@ -97,9 +204,20 @@ export class RtBasicDiagnosticProvider {
                         vscode.DiagnosticSeverity.Warning
                     ));
                 }
+                
+                // 检查是否已经有结束标记
+                if (block.hasEndToken) {
+                    continue; // 如果已经有结束标记，不需要压入栈中
+                }
+                
                 blockStack.push(block);
             } else if (this.isBlockEnd(block.type)) {
-                const lastBlock = blockStack.pop();
+                // 查找最近的未闭合的开始块
+                let lastBlock = blockStack.pop();
+                while (lastBlock && lastBlock.hasEndToken) {
+                    lastBlock = blockStack.pop();
+                }
+                
                 if (!lastBlock) {
                     diagnostics.push(new vscode.Diagnostic(
                         block.range,
@@ -112,12 +230,25 @@ export class RtBasicDiagnosticProvider {
                         `控制块类型不匹配: 期望 ${this.getMatchingEndType(lastBlock.type)}, 实际为 ${block.type}`,
                         vscode.DiagnosticSeverity.Error
                     ));
+                } else {
+                    // 标记该块已经有结束标记
+                    lastBlock.hasEndToken = true;
                 }
             }
         }
 
         // 检查剩余未闭合的块
         for (const block of blockStack) {
+            // 单行if语句不需要匹配的结束标记
+            if (block.type === 'If' && block.isSingleLine) {
+                continue;
+            }
+            
+            // 如果块已经有结束标记，跳过
+            if (block.hasEndToken) {
+                continue;
+            }
+            
             diagnostics.push(new vscode.Diagnostic(
                 block.range,
                 `控制块未正确闭合: ${block.type} 缺少 ${this.getMatchingEndType(block.type)}`,

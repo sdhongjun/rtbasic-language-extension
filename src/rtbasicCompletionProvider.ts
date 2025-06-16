@@ -383,6 +383,33 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             completions.push(item);
         });
 
+        // 添加控制语句代码片段
+        const controlSnippets = [
+            {
+                label: 'If',
+                kind: vscode.CompletionItemKind.Snippet,
+                insertText: new vscode.SnippetString('If ${1:condition} Then\n\t${2}\nEnd If'),
+                detail: 'If-Then block',
+                documentation: new vscode.MarkdownString('Creates an If-Then block')
+            },
+            {
+                label: 'ElseIf',
+                kind: vscode.CompletionItemKind.Snippet,
+                insertText: new vscode.SnippetString('ElseIf ${1:condition} Then\n\t${2}'),
+                detail: 'ElseIf block',
+                documentation: new vscode.MarkdownString('Creates an ElseIf block')
+            },
+            {
+                label: 'ElseIf-inline',
+                kind: vscode.CompletionItemKind.Snippet,
+                insertText: new vscode.SnippetString('ElseIf ${1:condition} Then ${2:statement}'),
+                detail: 'Single-line ElseIf statement',
+                documentation: new vscode.MarkdownString('Creates a single-line ElseIf statement')
+            }
+        ];
+
+        completions.push(...controlSnippets);
+
         // 添加工作区中的结构体（排除当前文件中已有的结构体）
         mergedSymbols.structures.forEach((struct: RtBasicStructure) => {
             // 确保不与当前文件中的结构体重复

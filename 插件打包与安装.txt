@@ -1,0 +1,7 @@
+1.安装vsce工具
+注意此命令在vscode终端中执行
+npm install -g vsce
+2.打包插件
+vsce package
+3.安装插件
+code --install-extension ./rtbasic-language-extension-0.0.1.vsix

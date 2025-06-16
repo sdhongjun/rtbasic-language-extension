@@ -336,6 +336,21 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             return new vscode.Hover(content, wordRange);
         }
 
+        // 检查关键字
+        const keywords: { [key: string]: string } = {
+            'If': '条件语句，用于根据条件执行代码块。\n\n**语法：**\n```\nIf condition Then\n    statements\n[ElseIf condition Then\n    statements]\n[Else\n    statements]\nEnd If\n```\n\n**单行语法：**\n```\nIf condition Then statement\n```',
+            'ElseIf': '条件语句的一部分，用于在前面的If条件为False时测试新条件。\n\n**语法：**\n```\nElseIf condition Then\n    statements\n```\n\n**单行语法：**\n```\nElseIf condition Then statement\n```',
+            'Else': '条件语句的一部分，用于在所有前面的条件都为False时执行代码。\n\n**语法：**\n```\nElse\n    statements\n```',
+            'Then': '用于If和ElseIf语句中，表示条件后面的执行代码。',
+            'For': '循环语句，用于指定次数重复执行代码块。\n\n**语法：**\n```\nFor counter = start To end [Step step]\n    statements\nNext [counter]\n```',
+            'While': '循环语句，当条件为True时重复执行代码块。\n\n**语法：**\n```\nWhile condition\n    statements\nWend\n```',
+            'Select': '多分支条件语句，根据表达式的值执行不同的代码块。\n\n**语法：**\n```\nSelect expression\n    Case value1\n        statements\n    Case value2\n        statements\n    [Default\n        statements]\nEnd Select\n```'
+        };
+
+        if (keywords[word]) {
+            return new vscode.Hover(new vscode.MarkdownString(keywords[word]), wordRange);
+        }
+
         return null;
     }
     
