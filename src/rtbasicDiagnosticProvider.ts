@@ -93,7 +93,7 @@ export class RtBasicDiagnosticProvider {
                 if (blockStack.length > 100) {
                     diagnostics.push(new vscode.Diagnostic(
                         block.range,
-                        `控制块嵌套层级过深（超过100层）`,
+                        `控制块嵌套层级过深(超过100层)`,
                         vscode.DiagnosticSeverity.Warning
                     ));
                 }

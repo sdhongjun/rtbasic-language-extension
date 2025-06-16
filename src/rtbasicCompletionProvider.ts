@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock } from './rtbasicParser';
+import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock, RtBasicCFunction } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
 
 export class RtBasicCompletionProvider implements vscode.CompletionItemProvider {
@@ -323,6 +323,44 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             }
         });
 
+        // 添加当前文件中的C函数补全
+        currentFileSymbols.cFunctions.forEach((cfunc: RtBasicCFunction) => {
+            const item = new vscode.CompletionItem(cfunc.name, vscode.CompletionItemKind.Function);
+            item.detail = `(C Function Import)`;
+            
+            const docs = new vscode.MarkdownString()
+                .appendCodeblock(`DEFINE_CFUNC ${cfunc.name} ${cfunc.cFunctionDecl};`, 'rtbasic')
+                .appendText('\nC Function Declaration:')
+                .appendCodeblock(cfunc.cFunctionDecl, 'c');
+            
+            if (cfunc.sourceFile) {
+                docs.appendText(`\nDefined in: ${cfunc.sourceFile}`);
+            }
+            
+            item.documentation = docs;
+            completions.push(item);
+        });
+
+        // 添加工作区中的C函数（排除当前文件中已有的C函数）
+        mergedSymbols.cFunctions?.forEach((cfunc: RtBasicCFunction) => {
+            if (!currentFileSymbols.cFunctions.some((f: RtBasicCFunction) => f.name === cfunc.name)) {
+                const item = new vscode.CompletionItem(cfunc.name, vscode.CompletionItemKind.Function);
+                item.detail = `(C Function Import)`;
+                
+                const docs = new vscode.MarkdownString()
+                    .appendCodeblock(`DEFINE_CFUNC ${cfunc.name} ${cfunc.cFunctionDecl};`, 'rtbasic')
+                    .appendText('\nC Function Declaration:')
+                    .appendCodeblock(cfunc.cFunctionDecl, 'c');
+                
+                if (cfunc.sourceFile) {
+                    docs.appendText(`\nDefined in: ${cfunc.sourceFile}`);
+                }
+                
+                item.documentation = docs;
+                completions.push(item);
+            }
+        });
+
         // 添加当前文件中的结构体补全
         currentFileSymbols.structures.forEach((struct: RtBasicStructure) => {
             const item = new vscode.CompletionItem(struct.name, vscode.CompletionItemKind.Struct);
@@ -389,6 +427,63 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
         this.workspaceManager = workspaceManager;
     }
 
+    /**
+     * 解析C函数参数列表
+     * @param paramsString 参数字符串
+     * @returns 解析后的参数数组
+     */
+    private parseParameters(paramsString: string): string[] {
+        const params: string[] = [];
+        let currentParam = '';
+        let nestLevel = 0;
+        let inString = false;
+        let stringChar = '';
+        
+        for (let i = 0; i < paramsString.length; i++) {
+            const char = paramsString[i];
+            
+            // 处理字符串
+            if ((char === '"' || char === "'") && (i === 0 || paramsString[i-1] !== '\\')) {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                }
+                currentParam += char;
+                continue;
+            }
+            
+            // 如果在字符串内，添加字符并继续
+            if (inString) {
+                currentParam += char;
+                continue;
+            }
+            
+            // 处理括号嵌套
+            if (char === '(') {
+                nestLevel++;
+                currentParam += char;
+            } else if (char === ')') {
+                nestLevel--;
+                currentParam += char;
+            } else if (char === ',' && nestLevel === 0) {
+                // 遇到顶层逗号，添加当前参数并重置
+                params.push(currentParam.trim());
+                currentParam = '';
+            } else {
+                currentParam += char;
+            }
+        }
+        
+        // 添加最后一个参数
+        if (currentParam.trim()) {
+            params.push(currentParam.trim());
+        }
+        
+        return params;
+    }
+
     public provideSignatureHelp(
         document: vscode.TextDocument,
         position: vscode.Position,
@@ -418,60 +513,107 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
             sub = mergedSymbols.subs.find(s => s.name === subName && s.isGlobal);
         }
         
+        // 如果没有找到Sub，尝试查找C函数
+        let cFunction = null;
         if (!sub) {
-            return null;
+            // 首先在当前文件中查找C函数
+            cFunction = currentFileSymbols.cFunctions?.find(f => f.name === subName);
+            
+            // 如果在当前文件中没有找到，则在全局符号中查找
+            if (!cFunction && mergedSymbols.cFunctions) {
+                cFunction = mergedSymbols.cFunctions.find(f => f.name === subName);
+            }
+            
+            // 如果也没有找到C函数，则返回null
+            if (!cFunction) {
+                return null;
+            }
         }
 
         const signatureHelp = new vscode.SignatureHelp();
         
-        // 构建参数字符串
-        const paramStrings = sub.parameters.map(p => {
-            let paramStr = p.name;
-            if (p.type) {
-                paramStr += ` As ${p.type}`;
-            }
-            if (p.isArray) {
-                paramStr += `(${p.arraySize})`;
-            }
-            return paramStr;
-        });
-        
-        // 创建函数签名信息
-        const signature = new vscode.SignatureInformation(
-            `${sub.name}(${paramStrings.join(', ')})${sub.returnType ? ` As ${sub.returnType}` : ''}`,
-            new vscode.MarkdownString(`${sub.isGlobal ? 'Global ' : ''}Sub defined in ${sub.sourceFile || 'current file'}`)
-        );
+        if (sub) {
+            // 处理Sub函数的签名
+            // 构建参数字符串
+            const paramStrings = sub.parameters.map(p => {
+                let paramStr = p.name;
+                if (p.type) {
+                    paramStr += ` As ${p.type}`;
+                }
+                if (p.isArray) {
+                    paramStr += `(${p.arraySize})`;
+                }
+                return paramStr;
+            });
+            
+            // 创建函数签名信息
+            const signature = new vscode.SignatureInformation(
+                `${sub.name}(${paramStrings.join(', ')})${sub.returnType ? ` As ${sub.returnType}` : ''}`,
+                new vscode.MarkdownString(`${sub.isGlobal ? 'Global ' : ''}Sub defined in ${sub.sourceFile || 'current file'}`)
+            );
 
-        // 为每个参数添加参数信息
-        signature.parameters = sub.parameters.map(param => {
-            let paramLabel = param.name;
-            if (param.type) {
-                paramLabel += ` As ${param.type}`;
-            }
-            if (param.isArray) {
-                paramLabel += `(${param.arraySize})`;
-            }
-            
-            const paramDoc = new vscode.MarkdownString()
-                .appendText(`Parameter ${param.name}`);
-            
-            if (param.type) {
-                paramDoc.appendText(`\nType: ${param.type}`);
-            }
-            
-            if (param.isArray) {
-                paramDoc.appendText(`\nArray with size ${param.arraySize}`);
-            }
-            
-            if (param.description) {
-                paramDoc.appendText(`\n\n${param.description}`);
-            }
-            
-            return new vscode.ParameterInformation(paramLabel, paramDoc);
-        });
+            // 为每个参数添加参数信息
+            signature.parameters = sub.parameters.map(param => {
+                let paramLabel = param.name;
+                if (param.type) {
+                    paramLabel += ` As ${param.type}`;
+                }
+                if (param.isArray) {
+                    paramLabel += `(${param.arraySize})`;
+                }
+                
+                const paramDoc = new vscode.MarkdownString()
+                    .appendText(`Parameter ${param.name}`);
+                
+                if (param.type) {
+                    paramDoc.appendText(`\nType: ${param.type}`);
+                }
+                
+                if (param.isArray) {
+                    paramDoc.appendText(`\nArray with size ${param.arraySize}`);
+                }
+                
+                if (param.description) {
+                    paramDoc.appendText(`\n\n${param.description}`);
+                }
+                
+                return new vscode.ParameterInformation(paramLabel, paramDoc);
+            });
 
-        signatureHelp.signatures = [signature];
-        signatureHelp.activeSignature = 0;
+            signatureHelp.signatures = [signature];
+            signatureHelp.activeSignature = 0;
+        } else if (cFunction) {
+            // 处理C函数的签名
+            // 解析C函数声明，提取参数信息
+            const cFuncDecl = cFunction.cFunctionDecl;
+            
+            // 创建函数签名信息
+            const signature = new vscode.SignatureInformation(
+                `${cFunction.name}${cFuncDecl.substring(cFuncDecl.indexOf('('))}`,
+                new vscode.MarkdownString(`C Function Import defined in ${cFunction.sourceFile || 'current file'}`)
+            );
+            
+            // 提取参数列表
+            const paramsMatch = cFuncDecl.match(/\((.*)\)/);
+            if (paramsMatch && paramsMatch[1].trim()) {
+                const paramsString = paramsMatch[1].trim();
+                // 处理参数列表，考虑逗号在字符串中的情况和嵌套括号
+                const params = this.parseParameters(paramsString);
+                
+                // 为每个参数添加参数信息
+                signature.parameters = params.map(param => {
+                    return new vscode.ParameterInformation(
+                        param,
+                        new vscode.MarkdownString(`C parameter: ${param}`)
+                    );
+                });
+            } else {
+                signature.parameters = [];
+            }
+            
+            signatureHelp.signatures = [signature];
+            signatureHelp.activeSignature = 0;
+        }
         
         // 计算当前参数位置
         if (subMatch[2]) {
@@ -511,7 +653,7 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
                 }
             }
             
-            signatureHelp.activeParameter = Math.min(commaCount, sub.parameters.length - 1);
+            signatureHelp.activeParameter = Math.min(commaCount, sub!.parameters.length - 1);
         } else {
             signatureHelp.activeParameter = 0; // 第一个参数
         }

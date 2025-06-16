@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicVariable, RtBasicStructure } from './rtbasicParser';
+import { RtBasicParser, RtBasicVariable, RtBasicStructure, RtBasicCFunction } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
 
 export class RtBasicHoverProvider implements vscode.HoverProvider {
@@ -228,6 +228,59 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             return new vscode.Hover(content, wordRange);
         }
 
+        // 检查C函数
+        // 首先在当前文件中查找C函数
+        let cFunction = currentFileSymbols.cFunctions.find(cf => cf.name === word);
+        sourceFile = document.uri.fsPath;
+        
+        // 如果当前文件中没有找到，则在全局符号中查找
+        if (!cFunction) {
+            cFunction = mergedSymbols.cFunctions.find(cf => cf.name === word);
+            
+            // 查找C函数的源文件
+            if (cFunction && cFunction.sourceFile) {
+                sourceFile = cFunction.sourceFile;
+            }
+        }
+        
+        if (cFunction) {
+            const content = new vscode.MarkdownString()
+                .appendCodeblock(
+                    `DEFINE_CFUNC ${cFunction.name} ${cFunction.cFunctionDecl};`, 
+                    'rtbasic'
+                )
+                .appendText('\n\nC Function Declaration:')
+                .appendCodeblock(cFunction.cFunctionDecl, 'c');
+            
+            // 解析并显示参数信息
+            const paramsMatch = cFunction.cFunctionDecl.match(/\((.*)\)/);
+            if (paramsMatch && paramsMatch[1].trim()) {
+                const params = this.parseCFunctionParameters(paramsMatch[1].trim());
+                if (params.length > 0) {
+                    content.appendText('\n\n**Parameters:**\n');
+                    params.forEach(param => {
+                        content.appendText(`- \`${param}\`\n`);
+                    });
+                }
+            }
+
+            // 提取并显示返回类型
+            const returnTypeMatch = cFunction.cFunctionDecl.match(/^(\w+\s*\*?\s+)/);
+            if (returnTypeMatch) {
+                const returnType = returnTypeMatch[1].trim();
+                if (returnType !== 'void') {
+                    content.appendText(`\n**Returns:** \`${returnType}\`\n`);
+                }
+            }
+            
+            // 如果C函数来自其他文件，显示源文件信息
+            if (sourceFile !== document.uri.fsPath) {
+                content.appendText(`\n\nDefined in ${this.getRelativePath(sourceFile)}`);
+            }
+            
+            return new vscode.Hover(content, wordRange);
+        }
+
         // 检查结构体
         // 首先在当前文件中查找结构体
         let struct = currentFileSymbols.structures.find(s => s.name === word);
@@ -291,6 +344,70 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
      * @param filePath 完整文件路径
      * @returns 相对于工作区的路径
      */
+    /**
+     * 解析C函数参数列表
+     * @param paramsString 参数字符串
+     * @returns 解析后的参数数组
+     */
+    private parseCFunctionParameters(paramsString: string): string[] {
+        const params: string[] = [];
+        let currentParam = '';
+        let nestLevel = 0;
+        let inString = false;
+        let stringChar = '';
+        
+        for (let i = 0; i < paramsString.length; i++) {
+            const char = paramsString[i];
+            
+            // 处理字符串
+            if ((char === '"' || char === "'") && (i === 0 || paramsString[i-1] !== '\\')) {
+                if (!inString) {
+                    inString = true;
+                    stringChar = char;
+                } else if (char === stringChar) {
+                    inString = false;
+                }
+                currentParam += char;
+                continue;
+            }
+            
+            // 如果在字符串内，添加字符并继续
+            if (inString) {
+                currentParam += char;
+                continue;
+            }
+            
+            // 处理括号嵌套
+            if (char === '(') {
+                nestLevel++;
+                currentParam += char;
+            } else if (char === ')') {
+                nestLevel--;
+                currentParam += char;
+            } else if (char === ',' && nestLevel === 0) {
+                // 遇到顶层逗号，添加当前参数并重置
+                const param = currentParam.trim();
+                if (param) {
+                    // 处理参数名称和类型
+                    const parts = param.split(/\s+/);
+                    // 如果参数声明包含多个部分（如 'const char *name'），保持完整格式
+                    params.push(param);
+                }
+                currentParam = '';
+            } else {
+                currentParam += char;
+            }
+        }
+        
+        // 添加最后一个参数
+        const lastParam = currentParam.trim();
+        if (lastParam) {
+            params.push(lastParam);
+        }
+        
+        return params;
+    }
+
     private getRelativePath(filePath: string): string {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders) {

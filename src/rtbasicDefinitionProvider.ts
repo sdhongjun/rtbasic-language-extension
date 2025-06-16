@@ -47,6 +47,12 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             return new vscode.Location(document.uri, localSub.range);
         }
         
+        // 检查当前文件中的C函数
+        const localCFunc = currentFileSymbols.cFunctions.find(cf => cf.name === word);
+        if (localCFunc) {
+            return new vscode.Location(document.uri, localCFunc.range);
+        }
+        
         // 检查当前文件中的结构体
         const localStruct = currentFileSymbols.structures.find(s => s.name === word);
         if (localStruct) {
@@ -132,6 +138,28 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
                 );
                 if (fileSub) {
                     return new vscode.Location(vscode.Uri.file(filePath), fileSub.range);
+                }
+            }
+        }
+        
+        // 检查C函数
+        const globalCFunc = mergedSymbols.cFunctions.find(cf => cf.name === word);
+        if (globalCFunc) {
+            // 如果是当前文件中的C函数，直接返回
+            const currentFileCFunc = currentFileSymbols.cFunctions.find(
+                cf => cf.name === word
+            );
+            if (currentFileCFunc) {
+                return new vscode.Location(document.uri, currentFileCFunc.range);
+            }
+            
+            // 否则，在其他文件中查找
+            for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
+                const fileCFunc = fileSymbols.cFunctions.find(
+                    cf => cf.name === word
+                );
+                if (fileCFunc) {
+                    return new vscode.Location(vscode.Uri.file(filePath), fileCFunc.range);
                 }
             }
         }

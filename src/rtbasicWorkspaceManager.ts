@@ -91,7 +91,8 @@ export class RtBasicWorkspaceManager {
             variables: [],
             subs: [],
             structures: [],
-            controlBlocks: []
+            controlBlocks: [],
+            cFunctions: []
         };
 
         // 合并所有文件的符号
@@ -100,6 +101,10 @@ export class RtBasicWorkspaceManager {
             mergedSymbols.variables.push(...symbols.variables.filter(v => v.scope === 'global'));
             mergedSymbols.subs.push(...symbols.subs.filter(s => s.isGlobal));
             mergedSymbols.structures.push(...symbols.structures.filter(s => s.isGlobal));
+            // 合并C函数
+            if (symbols.cFunctions) {
+                mergedSymbols.cFunctions.push(...symbols.cFunctions);
+            }
         }
 
         return mergedSymbols;
@@ -139,7 +144,8 @@ export class RtBasicWorkspaceManager {
             variables: [...fileSymbols.variables],
             subs: [...fileSymbols.subs],
             structures: [...fileSymbols.structures],
-            controlBlocks: [...fileSymbols.controlBlocks]
+            controlBlocks: [...fileSymbols.controlBlocks],
+            cFunctions: [...(fileSymbols.cFunctions || [])]
         };
 
         // 添加其他文件的全局符号（避免重复）
@@ -158,6 +164,15 @@ export class RtBasicWorkspaceManager {
         for (const structure of globalSymbols.structures) {
             if (structure.isGlobal && !mergedSymbols.structures.some(s => s.name === structure.name)) {
                 mergedSymbols.structures.push(structure);
+            }
+        }
+
+        // 添加其他文件的C函数（避免重复）
+        if (globalSymbols.cFunctions) {
+            for (const cFunction of globalSymbols.cFunctions) {
+                if (!mergedSymbols.cFunctions.some(f => f.name === cFunction.name)) {
+                    mergedSymbols.cFunctions.push(cFunction);
+                }
             }
         }
 

@@ -22,6 +22,7 @@ export interface ControlBlock {
   parentSub?: string;
   parentBlock?: ControlBlock; // 添加父控制块引用，用于嵌套控制块
   variables?: RtBasicVariable[]; // 添加变量数组
+  isSingleLine?: boolean; // 标记是否为单行控制块，如单行if语句
 }
 
 export interface RtBasicSub {
@@ -49,19 +50,44 @@ export interface RtBasicStructure {
   sourceFile?: string;
 }
 
+export interface RtBasicCFunction {
+  name: string;         // RtBasic中的函数名
+  cFunctionDecl: string; // C函数声明
+  range: vscode.Range;
+  sourceFile?: string;
+}
+
 export interface RtBasicSymbol {
   variables: RtBasicVariable[];
   subs: RtBasicSub[];
   structures: RtBasicStructure[];
   controlBlocks: ControlBlock[];
+  cFunctions: RtBasicCFunction[];
 }
 
 export class RtBasicParser {
+  // 预编译的正则表达式
+  private static readonly CFUNC_REGEX = /^\s*DEFINE_CFUNC\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+?);/i;
+  private static readonly IF_START_REGEX = /^If\b.*?\bThen\b(?:\s+([^'\r\n]*))?/i;
+  private static readonly FOR_START_REGEX = /^For\b.*?\bTo\b.*$/i;
+  private static readonly WHILE_START_REGEX = /^While\b.*$/i;
+  private static readonly SELECT_START_REGEX = /^Select\s+Case\b.*$/i;
+  private static readonly IF_END_REGEX = /^End\s+If\b/i;
+  private static readonly SELECT_END_REGEX = /^End\s+Select\b/i;
+  private static readonly FOR_END_REGEX = /^Next\b/i;
+  private static readonly WHILE_END_REGEX = /^Wend\b/i;
+  private static readonly GLOBAL_DIM_REGEX = /global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i;
+  private static readonly DIM_REGEX = /dim\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i;
+  private static readonly LOCAL_REGEX = /local\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i;
+  private static readonly VAR_DEFINITION_REGEX = /([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((\d+)\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i;
+  private static readonly ARRAY_REGEX = /(\w+)\s*\((\d+)\)/;
+
   private symbols: RtBasicSymbol = {
     variables: [],
     subs: [],
     structures: [],
-    controlBlocks: []
+    controlBlocks: [],
+    cFunctions: []
   };
 
   constructor() {
@@ -73,7 +99,8 @@ export class RtBasicParser {
       variables: [],
       subs: [],
       structures: [],
-      controlBlocks: []
+      controlBlocks: [],
+      cFunctions: []
     };
   }
 
@@ -90,215 +117,100 @@ export class RtBasicParser {
       const text = line.text.trim();
       const lineRange = new vscode.Range(i, 0, i, line.text.length);
 
-      // 检查控制语句块开始
-    const blockStartMatch = text.match(/^(If|For|While|Select\s+Case)\b.*$/i);
-      if (blockStartMatch) {
-        const blockType = blockStartMatch[1].replace(/\s+Case$/, '') as ControlBlockType;
+      // 解析C函数导入
+      const cFuncMatch = text.match(/^\s*DEFINE_CFUNC\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+?);/i);
+      if (cFuncMatch) {
+        const rtbasicName = cFuncMatch[1];
+        const cFunctionDecl = cFuncMatch[2];
 
-        // 特例处理：检查是否是单行if语句（if与then在同一行且then后有非注释语句）
-        if (blockType === "If") {
-          const ifThenMatch = text.match(/^If\b.*\bThen\b\s+(.+)$/i);
-          if (ifThenMatch) {
-            const afterThen = ifThenMatch[1].trim();
-            // 检查then后是否有非注释语句
-            if (afterThen && !afterThen.startsWith("'") && !afterThen.startsWith("REM", 0)) {
-              // 这是一个单行if语句，直接将其添加到符号表中
-              const singleLineIfBlock: ControlBlock = {
-                type: "If",
-                range: lineRange,
-                parentSub: currentSub?.name,
-                variables: []
-              };
-
-              // 如果这是嵌套的控制块，设置父控制块
-              if (currentControlBlock) {
-                singleLineIfBlock.parentBlock = currentControlBlock;
-              }
-
-              // 直接添加到符号表，不加入活动控制块栈
-              this.symbols.controlBlocks.push(singleLineIfBlock);
-
-              // 继续处理下一行
-              continue;
-            }
-          }
-        }
-
-        // 常规控制块处理
-        const newBlock: ControlBlock = {
-          type: blockType,
+        this.symbols.cFunctions.push({
+          name: rtbasicName,
+          cFunctionDecl: cFunctionDecl,
           range: lineRange,
-          parentSub: currentSub?.name,
-          variables: []
-        };
+          sourceFile: document.uri.fsPath
+        });
+        continue;
+      }
 
-        // 如果这是嵌套的控制块，设置父控制块
-        if (currentControlBlock) {
-          newBlock.parentBlock = currentControlBlock;
+      // 检查控制语句块开始
+      const blockStartInfo = this.detectControlBlockStart(text);
+      if (blockStartInfo) {
+        const { blockType, isSingleLine } = blockStartInfo;
+        
+        if (blockType === "If" && isSingleLine) {
+          // 单行 if 语句处理 - 不需要 end if
+          const singleLineIfBlock = this.handleBlockStart(
+            blockType, 
+            lineRange, 
+            currentSub, 
+            currentControlBlock, 
+            true
+          );
+          
+          // 直接添加到符号表，不加入活动控制块栈
+          this.symbols.controlBlocks.push(singleLineIfBlock);
+        } else {
+          // 常规多行控制块处理 - 需要对应的结束标记
+          const newBlock = this.handleBlockStart(
+            blockType, 
+            lineRange, 
+            currentSub, 
+            currentControlBlock, 
+            false
+          );
+          
+          // 将当前控制块加入活动控制块栈
+          activeControlBlocks.push(newBlock);
+          currentControlBlock = newBlock;
         }
-
-        // 将当前控制块加入活动控制块栈
-        activeControlBlocks.push(newBlock);
-        currentControlBlock = newBlock;
+        
+        continue;
       }
 
       // 检查控制语句块结束
-      const blockEndMatch = text.match(/^(?:End\s+(If|Select)|Next|Wend)\b/i);
-      if (blockEndMatch && activeControlBlocks.length > 0) {
-        const lastBlock = activeControlBlocks[activeControlBlocks.length - 1];
-        const endType = blockEndMatch[1] || blockEndMatch[0];
+      const blockEndInfo = this.detectControlBlockEnd(text, activeControlBlocks);
+      if (blockEndInfo && blockEndInfo.matchingBlock) {
+        const { matchingBlock, matchingIndex } = blockEndInfo;
+        
+        // 处理从匹配块到栈顶的所有块
+        for (let i = activeControlBlocks.length - 1; i >= matchingIndex; i--) {
+          this.handleBlockEnd(activeControlBlocks[i], lineRange);
+        }
 
-        // 检查结束类型是否匹配当前控制块
-        const isMatching = (
-          (endType.toLowerCase() === "if" && lastBlock.type === "If") ||
-          (endType.toLowerCase() === "select" && lastBlock.type === "Select") ||
-          (endType.toLowerCase() === "next" && lastBlock.type === "For") ||
-          (endType.toLowerCase() === "wend" && lastBlock.type === "While")
-        );
+        // 从活动控制块栈中移除所有已处理的块
+        activeControlBlocks.splice(matchingIndex);
 
-        if (isMatching) {
-          // 更新控制语句块范围，包括结束行
-          lastBlock.range = new vscode.Range(
-            lastBlock.range.start,
-            lineRange.end
-          );
+        // 更新当前控制块为栈顶的控制块（如果有的话）
+        currentControlBlock = activeControlBlocks.length > 0
+          ? activeControlBlocks[activeControlBlocks.length - 1]
+          : undefined;
 
-          // 收集控制块内的变量
-          if (!lastBlock.variables) {
-            lastBlock.variables = [];
-          }
+        continue;
+      }
 
-          // 查找属于此控制块的所有变量
-          this.symbols.variables.forEach(variable => {
-            if (variable.parentBlock === lastBlock) {
-              lastBlock.variables!.push(variable);
-            }
-          });
-
-          // 将完成的控制块添加到符号表中
-          this.symbols.controlBlocks.push(lastBlock);
-
-          // 从活动控制块栈中移除
-          activeControlBlocks.pop();
-
-          // 更新当前控制块为栈顶的控制块（如果有的话）
-          currentControlBlock = activeControlBlocks.length > 0
-            ? activeControlBlocks[activeControlBlocks.length - 1]
-            : undefined;
-
-          // 如果当前控制块存在，更新其范围以包含刚结束的子块
+      // 检查变量声明
+      if ((text.toLowerCase().startsWith("global dim") || 
+           (text.toLowerCase().startsWith("dim") && !currentStructure) || 
+           text.toLowerCase().startsWith("local")) && 
+          (!text.toLowerCase().startsWith("local") || (currentSub || currentControlBlock))) {
+        
+        // 处理变量声明
+        const variableInfo = this.detectVariableDeclaration(text, lineRange, currentSub, currentControlBlock);
+        if (variableInfo) {
+          const { variable } = variableInfo;
+          
+          // 将变量添加到符号表
+          this.symbols.variables.push(variable);
+          
+          // 如果变量在控制块内，将其添加到控制块的变量列表中
           if (currentControlBlock) {
-            currentControlBlock.range = new vscode.Range(
-              currentControlBlock.range.start,
-              lineRange.end
-            );
+            if (!currentControlBlock.variables) {
+              currentControlBlock.variables = [];
+            }
+            currentControlBlock.variables.push(variable);
           }
-        }
-      }
-
-      // 解析全局变量
-      if (text.toLowerCase().startsWith("global dim")) {
-        // 匹配数组变量: Global Dim varName(size) [As type]
-        // 匹配全局变量: Global Dim var1, var2 As Structure
-        const globalMatch = text.match(
-          /global\s+(dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
-        );
-        if (globalMatch) {
-          const varNames = globalMatch[1].split(",").map((name) => name.trim());
-          const structType = globalMatch[2];
-
-          varNames.forEach((varName) => {
-            // 检查是否是数组
-            const arrayMatch = varName.match(/(\w+)\s*\((\d+)\)/);
-            if (arrayMatch) {
-              this.symbols.variables.push({
-                name: arrayMatch[1],
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: "global",
-                isArray: true,
-                arraySize: parseInt(arrayMatch[2]),
-                structType: structType,
-              });
-            } else {
-              this.symbols.variables.push({
-                name: varName,
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: "global",
-                structType: structType,
-              });
-            }
-          });
-        }
-      }
-
-      // 解析文件变量（只有在不在结构体内部时才解析为文件变量）
-      else if (text.toLowerCase().startsWith("dim") && !currentStructure) {
-        const dimMatch = text.match(
-          /dim\s+([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
-        );
-        if (dimMatch) {
-          const varNames = dimMatch[1].split(",").map((name) => name.trim());
-          const structType = dimMatch[2];
-
-          varNames.forEach((varName) => {
-            const arrayMatch = varName.match(/(\w+)\s*\((\d+)\)/);
-            if (arrayMatch) {
-              this.symbols.variables.push({
-                name: arrayMatch[1],
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: "file",
-                isArray: true,
-                arraySize: parseInt(arrayMatch[2]),
-                structType: structType,
-              });
-            } else {
-              this.symbols.variables.push({
-                name: varName,
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: "file",
-                structType: structType,
-              });
-            }
-          });
-        }
-      }
-
-      // 解析局部变量
-      else if (text.toLowerCase().startsWith("local")) {
-        // 匹配以下格式：
-        // 1. local var1, var2 [As type]
-        // 2. local arr(size) [As type]
-        // 3. local var1 As type, var2 As type
-        const localMatch = text.match(
-          /local\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i
-        );
-
-        if (localMatch && (currentSub || currentControlBlock)) {
-          // 分割多个变量定义
-          const varDefinitions = localMatch[1].split(",").map(def => def.trim());
-
-          varDefinitions.forEach(varDef => {
-            // 解析每个变量定义
-            // 匹配格式：varName[(size)] [As type]
-            const varMatch = varDef.match(/([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((\d+)\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i);
-
-            if (varMatch) {
-              const varName = varMatch[1];
-              const arraySize = varMatch[2] ? parseInt(varMatch[2]) : undefined;
-              const varType = varMatch[3];
-
-              this.symbols.variables.push({
-                name: varName,
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: currentControlBlock ? "block" : "local",
-                isArray: arraySize !== undefined,
-                arraySize: arraySize,
-                structType: varType,
-                parentSub: currentSub?.name,
-                parentBlock: currentControlBlock || undefined,
-              });
-            }
-          });
+          
+          continue;
         }
       }
 
@@ -428,6 +340,260 @@ export class RtBasicParser {
     return this.symbols;
   }
 
+  /**
+   * 解析变量声明并创建变量对象
+   */
+  private parseVariableDeclaration(
+    varName: string,
+    range: vscode.Range,
+    scope: "global" | "local" | "file" | "block",
+    structType?: string,
+    parentSub?: string,
+    parentBlock?: ControlBlock
+  ): RtBasicVariable {
+    const arrayMatch = varName.match(RtBasicParser.ARRAY_REGEX);
+    if (arrayMatch) {
+      return {
+        name: arrayMatch[1],
+        range,
+        scope,
+        isArray: true,
+        arraySize: parseInt(arrayMatch[2]),
+        structType,
+        parentSub,
+        parentBlock
+      };
+    }
+    return {
+      name: varName,
+      range,
+      scope,
+      structType,
+      parentSub,
+      parentBlock
+    };
+  }
+
+  /**
+   * 处理控制块的开始
+   */
+  private handleBlockStart(
+    blockType: ControlBlockType,
+    lineRange: vscode.Range,
+    currentSub?: RtBasicSub,
+    currentControlBlock?: ControlBlock,
+    isSingleLine: boolean = false
+  ): ControlBlock {
+    const newBlock: ControlBlock = {
+      type: blockType,
+      range: lineRange,
+      parentSub: currentSub?.name,
+      variables: [],
+      isSingleLine
+    };
+
+    if (currentControlBlock) {
+      newBlock.parentBlock = currentControlBlock;
+    }
+
+    return newBlock;
+  }
+
+  /**
+   * 处理控制块的结束
+   */
+  private handleBlockEnd(
+    block: ControlBlock,
+    lineRange: vscode.Range
+  ): void {
+    // 更新控制块范围
+    block.range = new vscode.Range(block.range.start, lineRange.end);
+
+    // 收集控制块内的变量
+    if (!block.variables) {
+      block.variables = [];
+    }
+
+    // 查找属于此控制块的所有变量
+    this.symbols.variables.forEach(variable => {
+      // 检查变量是否在此控制块的范围内
+      if (variable.range && block.range.contains(variable.range) && 
+          (!variable.parentBlock || variable.parentBlock === block)) {
+        
+        // 如果变量还没有被添加到任何控制块，或者已经是这个控制块的变量
+        if (!block.variables!.includes(variable)) {
+          block.variables!.push(variable);
+        }
+        
+        // 更新变量的父控制块引用
+        variable.parentBlock = block;
+      }
+    });
+
+    // 将完成的控制块添加到符号表中
+    if (!this.symbols.controlBlocks.includes(block)) {
+      this.symbols.controlBlocks.push(block);
+    }
+  }
+
+  /**
+   * 检查控制块结束类型是否匹配
+   */
+  private isMatchingBlockEnd(endType: string, blockType: ControlBlockType): boolean {
+    const endTypeMap: Record<string, ControlBlockType> = {
+      'if': 'If',
+      'select': 'Select',
+      'next': 'For',
+      'wend': 'While'
+    };
+    
+    return endTypeMap[endType.toLowerCase()] === blockType;
+  }
+
+  /**
+   * 检测控制块的开始
+   */
+  private detectControlBlockStart(text: string): { blockType: ControlBlockType; isSingleLine: boolean } | undefined {
+    // 检查 If 语句
+    const ifThenMatch = text.match(RtBasicParser.IF_START_REGEX);
+    if (ifThenMatch) {
+      let isSingleLine = false;
+      
+      // 检查是否是单行 if 语句 - 如果 then 后面有内容
+      if (ifThenMatch[1]) {
+        const afterThen = ifThenMatch[1].trim();
+        
+        // 检查 then 后是否有实际语句（不是空白且不以注释开头）
+        if (afterThen && !afterThen.startsWith("'") && !afterThen.toLowerCase().startsWith("rem ")) {
+          // 检查是否有注释，如果有，提取注释前的实际语句
+          const commentPos = afterThen.indexOf("'");
+          const actualStatement = commentPos >= 0 ? afterThen.substring(0, commentPos).trim() : afterThen;
+          
+          // 如果实际语句不为空，则这是一个单行if语句
+          if (actualStatement) {
+            isSingleLine = true;
+          }
+        }
+      }
+      
+      return { blockType: "If", isSingleLine };
+    }
+    
+    // 检查其他控制块类型
+    const blockTypeMatches = [
+      { regex: RtBasicParser.FOR_START_REGEX, type: "For" as ControlBlockType },
+      { regex: RtBasicParser.WHILE_START_REGEX, type: "While" as ControlBlockType },
+      { regex: RtBasicParser.SELECT_START_REGEX, type: "Select" as ControlBlockType }
+    ];
+
+    for (const { regex, type } of blockTypeMatches) {
+      if (text.match(regex)) {
+        return { blockType: type, isSingleLine: false };
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 检测控制块的结束
+   */
+
+  private detectControlBlockEnd(text: string, activeControlBlocks: ControlBlock[]): 
+    { matchingBlock: ControlBlock; matchingIndex: number } | undefined {
+    
+    if (activeControlBlocks.length === 0) {
+      return undefined;
+    }
+
+    const endMatches = [
+      { regex: RtBasicParser.IF_END_REGEX, type: "If" },
+      { regex: RtBasicParser.SELECT_END_REGEX, type: "Select" },
+      { regex: RtBasicParser.FOR_END_REGEX, type: "For" },
+      { regex: RtBasicParser.WHILE_END_REGEX, type: "While" }
+    ];
+
+    for (const { regex, type } of endMatches) {
+      if (text.match(regex)) {
+        // 查找最近的匹配块
+        for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+          const block = activeControlBlocks[i];
+          if (block.type === type && (!block.isSingleLine || type !== "If")) {
+            return { matchingBlock: block, matchingIndex: i };
+          }
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * 检测变量声明并创建变量对象
+   */
+  private detectVariableDeclaration(
+    text: string,
+    lineRange: vscode.Range,
+    currentSub?: RtBasicSub,
+    currentControlBlock?: ControlBlock
+  ): { variable: RtBasicVariable; scope: "global" | "local" | "file" | "block" } | undefined {
+    // 检查全局变量声明
+    if (text.toLowerCase().startsWith("global dim")) {
+      const globalMatch = text.match(RtBasicParser.GLOBAL_DIM_REGEX);
+      if (globalMatch) {
+        const varName = globalMatch[1].trim();
+        const structType = globalMatch[2];
+        const variable = this.parseVariableDeclaration(
+          varName,
+          lineRange,
+          "global",
+          structType,
+          undefined,
+          currentControlBlock
+        );
+        return { variable, scope: "global" };
+      }
+    }
+    
+    // 检查文件变量声明
+    else if (text.toLowerCase().startsWith("dim")) {
+      const dimMatch = text.match(RtBasicParser.DIM_REGEX);
+      if (dimMatch) {
+        const varName = dimMatch[1].trim();
+        const structType = dimMatch[2];
+        const variable = this.parseVariableDeclaration(
+          varName,
+          lineRange,
+          "file",
+          structType,
+          undefined,
+          currentControlBlock
+        );
+        return { variable, scope: "file" };
+      }
+    }
+    
+    // 检查局部变量声明
+    else if (text.toLowerCase().startsWith("local")) {
+      const localMatch = text.match(RtBasicParser.LOCAL_REGEX);
+      if (localMatch && (currentSub || currentControlBlock)) {
+        const varName = localMatch[1].trim();
+        const scope = currentControlBlock ? "block" : "local";
+        const variable = this.parseVariableDeclaration(
+          varName,
+          lineRange,
+          scope,
+          undefined,
+          currentSub?.name,
+          currentControlBlock
+        );
+        return { variable, scope };
+      }
+    }
+    
+    return undefined;
+  }
+
   private parseParameters(paramsText: string): RtBasicParameter[] {
     if (!paramsText.trim()) {
       return [];
@@ -435,9 +601,8 @@ export class RtBasicParser {
 
     return paramsText.split(",").map((param) => {
       param = param.trim();
-
-      // 检查是否是数组参数
-      const arrayMatch = param.match(/(\w+)\s*\((\d+)\)/i);
+      const arrayMatch = param.match(RtBasicParser.ARRAY_REGEX);
+      
       if (arrayMatch) {
         return {
           name: arrayMatch[1],
@@ -446,17 +611,9 @@ export class RtBasicParser {
         };
       }
 
-      // 普通参数
       const match = param.match(/(\w+)/i);
-      if (match) {
-        return {
-          name: match[1],
-        };
-      }
-
-      // 如果无法解析，返回一个基本参数
       return {
-        name: param,
+        name: match ? match[1] : param,
       };
     });
   }
@@ -516,6 +673,17 @@ export class RtBasicParser {
         vscode.SymbolKind.Module,
         controlBlock.parentSub || "file",
         new vscode.Location(document.uri, controlBlock.range)
+      );
+    }
+
+    // 检查C函数导入
+    const cFunction = this.symbols.cFunctions.find((cf) => cf.name === word);
+    if (cFunction) {
+      return new vscode.SymbolInformation(
+        cFunction.name,
+        vscode.SymbolKind.Function,
+        "C Function Import",
+        new vscode.Location(document.uri, cFunction.range)
       );
     }
 
