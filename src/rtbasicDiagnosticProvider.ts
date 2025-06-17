@@ -58,29 +58,224 @@ export class RtBasicDiagnosticProvider {
         this.diagnosticCollection.set(document.uri, diagnostics);
     }
 
-    private checkElseIfElseStatements(document: vscode.TextDocument, blocks: ControlBlock[], diagnostics: vscode.Diagnostic[]) {
-        const ifBlockStack: ControlBlock[] = [];
+    /**
+     * 判断一行代码是否是单行语句
+     * @param text 代码文本
+     * @returns 是否是单行语句
+     */
+    private isSingleLineStatement(text: string): boolean {
+        const hasThen = text.toLowerCase().includes("then");
+        if (!hasThen) return false;
         
-        // 遍历所有控制块，构建if块栈
+        const thenIndex = text.toLowerCase().indexOf("then");
+        const afterThen = text.substring(thenIndex + 4).trim();
+        
+        // 如果Then后面没有内容，或者只有注释，就不是单行语句
+        return afterThen !== "" && 
+               !afterThen.startsWith("'") && 
+               !afterThen.toLowerCase().startsWith("rem ");
+    }
+
+    /**
+     * 判断一个控制块是否在Sub内部
+     * @param block 控制块
+     * @param document 文档
+     * @returns 是否在Sub内部
+     */
+    private isBlockInSub(block: ControlBlock, document: vscode.TextDocument): boolean {
+        // 从块的开始位置向上查找Sub声明
+        for (let line = block.range.start.line; line >= 0; line--) {
+            const text = document.lineAt(line).text.trim().toLowerCase();
+            if (text.startsWith('sub ')) return true;
+            if (text === 'end sub') return false;
+        }
+        return false;
+    }
+
+    /**
+     * 获取If块的父级Sub名称
+     * @param block 控制块
+     * @param document 文档
+     * @returns Sub名称或undefined
+     */
+    private getParentSubName(block: ControlBlock, document: vscode.TextDocument): string | undefined {
+        for (let line = block.range.start.line; line >= 0; line--) {
+            const text = document.lineAt(line).text.trim();
+            if (text.toLowerCase().startsWith('sub ')) {
+                const match = text.match(/^sub\s+(\w+)/i);
+                return match ? match[1] : undefined;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * 检查If语句、ElseIf和Else分支的正确性
+     * 重构版本，使用更健壮的逻辑
+     */
+    private checkElseIfElseStatements(document: vscode.TextDocument, blocks: ControlBlock[], diagnostics: vscode.Diagnostic[]) {
+        // 按行号对控制块进行排序
+        const sortedBlocks = [...blocks].sort((a, b) => a.range.start.line - b.range.start.line);
+        
+        // 创建一个映射，用于快速查找每行对应的控制块
+        const lineToBlockMap = new Map<number, ControlBlock>();
         for (const block of blocks) {
-            if (block.type === 'If') {
-                if (block.isSingleLine) {
-                    // 单行if语句不压入栈
-                    continue;
+            lineToBlockMap.set(block.range.start.line, block);
+        }
+        
+        // 用于跟踪If块的栈
+        interface IfContext {
+            block: ControlBlock;
+            isSingleLine: boolean;
+            hasElse: boolean;
+            parentSub?: string;
+            startLine: number;
+            endLine?: number;
+            elseIfLines: number[];
+            elseLines: number[];
+        }
+        
+        const ifContextStack: IfContext[] = [];
+        const allIfContexts: IfContext[] = [];
+        
+        // 第一遍扫描：构建If块的上下文信息
+        for (let i = 0; i < document.lineCount; i++) {
+            const line = document.lineAt(i);
+            const text = line.text.trim().toLowerCase();
+            const block = lineToBlockMap.get(i);
+
+            // 处理If语句
+            if (block && block.type === 'If') {
+                const isSingleLine = this.isSingleLineStatement(text);
+                const parentSub = this.getParentSubName(block, document);
+                
+                const context: IfContext = {
+                    block,
+                    isSingleLine,
+                    hasElse: false,
+                    parentSub,
+                    startLine: i,
+                    elseIfLines: [],
+                    elseLines: []
+                };
+
+                ifContextStack.push(context);
+                allIfContexts.push(context);
+                continue;
+            }
+
+            // 处理End If语句
+            if (text === 'end if' && ifContextStack.length > 0) {
+                const currentContext = ifContextStack[ifContextStack.length - 1];
+                currentContext.endLine = i;
+                ifContextStack.pop();
+                continue;
+            }
+
+            // 处理ElseIf语句
+            if (text.startsWith('elseif') && ifContextStack.length > 0) {
+                const currentContext = ifContextStack[ifContextStack.length - 1];
+                currentContext.elseIfLines.push(i);
+                continue;
+            }
+
+            // 处理Else语句
+            if (text === 'else' && ifContextStack.length > 0) {
+                const currentContext = ifContextStack[ifContextStack.length - 1];
+                currentContext.elseLines.push(i);
+                currentContext.hasElse = true;
+                continue;
+            }
+            
+        }
+
+        // 第二遍扫描：检查ElseIf和Else语句的正确性
+        for (const context of allIfContexts) {
+            // 检查单行If语句的ElseIf和Else
+            if (context.isSingleLine) {
+                // 单行If不应该有End If
+                if (context.endLine !== undefined) {
+                    diagnostics.push(new vscode.Diagnostic(
+                        document.lineAt(context.endLine).range,
+                        `单行If语句不应该有End If`,
+                        vscode.DiagnosticSeverity.Error
+                    ));
                 }
-                if (!block.hasEndToken) {
-                    ifBlockStack.push(block);
+
+                // 检查ElseIf语句
+                for (const elseIfLine of context.elseIfLines) {
+                    const line = document.lineAt(elseIfLine);
+                    const text = line.text.trim();
+                    
+                    // 单行If后的ElseIf也必须是单行形式
+                    if (!this.isSingleLineStatement(text)) {
+                        diagnostics.push(new vscode.Diagnostic(
+                            line.range,
+                            `单行If语句后的ElseIf也必须是单行形式`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    }
                 }
-            } else if (block.type === 'End If') {
-                // 弹出最近的if块
-                const lastIf = ifBlockStack[ifBlockStack.length - 1];
-                if (lastIf && lastIf.type === 'If') {
-                    ifBlockStack.pop();
+
+                // 检查Else语句
+                for (const elseLine of context.elseLines) {
+                    const line = document.lineAt(elseLine);
+                    const text = line.text.trim();
+                    
+                    // 单行If后的Else也必须是单行形式
+                    if (text.toLowerCase() === 'else') {
+                        diagnostics.push(new vscode.Diagnostic(
+                            line.range,
+                            `单行If语句后的Else也必须是单行形式，应包含语句`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    }
+                }
+            } else {
+                // 多行If语句的检查
+                
+                // 多行If必须有End If
+                if (context.endLine === undefined) {
+                    diagnostics.push(new vscode.Diagnostic(
+                        document.lineAt(context.startLine).range,
+                        `多行If语句必须有对应的End If`,
+                        vscode.DiagnosticSeverity.Error
+                    ));
+                }
+
+                // 检查ElseIf语句
+                for (const elseIfLine of context.elseIfLines) {
+                    const line = document.lineAt(elseIfLine);
+                    const text = line.text.trim();
+                    
+                    // 多行If块内的ElseIf不能是单行形式
+                    if (this.isSingleLineStatement(text)) {
+                        diagnostics.push(new vscode.Diagnostic(
+                            line.range,
+                            `多行If块内的ElseIf不能是单行形式`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    }
+                }
+
+                // 检查Else语句
+                for (const elseLine of context.elseLines) {
+                    const line = document.lineAt(elseLine);
+                    const text = line.text.trim();
+                    
+                    // 多行If块内的Else必须是独立的一行
+                    if (text.toLowerCase() !== 'else') {
+                        diagnostics.push(new vscode.Diagnostic(
+                            line.range,
+                            `多行If块内的Else必须是独立的一行`,
+                            vscode.DiagnosticSeverity.Error
+                        ));
+                    }
                 }
             }
         }
-
-        // 遍历每一行检查ElseIf和Else语句
+        
+        // 第三遍扫描：检查ElseIf和Else语句是否在有效的If块内部
         for (let i = 0; i < document.lineCount; i++) {
             const line = document.lineAt(i);
             const text = line.text.trim();
@@ -89,32 +284,24 @@ export class RtBasicDiagnosticProvider {
             if (/^ElseIf\b/i.test(text) || /^Else\b/i.test(text)) {
                 const isElseIf = /^ElseIf\b/i.test(text);
                 
-                // 检查是否是单行ElseIf语句
-                const isSingleLineElseIf = isElseIf && 
-                                         /^ElseIf\b.*?\bThen\b.*[^'].*$/i.test(text) && 
-                                         !/^ElseIf\b.*?\bThen\b\s*$/i.test(text);
-                
-                // 检查前一个语句的类型
-                if (i > 0) {
-                    const prevLine = document.lineAt(i - 1).text.trim();
-                    const isPrevSingleLine = /^(If|ElseIf)\b.*?\bThen\b.*[^'].*$/i.test(prevLine) && 
-                                          !/^(If|ElseIf)\b.*?\bThen\b\s*$/i.test(prevLine);
-                    
-                    if (isPrevSingleLine && !isSingleLineElseIf) {
-                        diagnostics.push(new vscode.Diagnostic(
-                            line.range,
-                            `单行If/ElseIf语句后面的${isElseIf ? 'ElseIf' : 'Else'}语句也必须是单行形式`,
-                            vscode.DiagnosticSeverity.Error
-                        ));
-                        continue;
-                    }
-                }
-                
-                // 检查是否在有效的if块范围内
+                // 检查是否在任何If块的上下文中
                 let inValidIfBlock = false;
-                for (const block of ifBlockStack) {
-                    if (block.range.contains(line.range)) {
+                let parentIfContext: IfContext | undefined;
+                
+                for (const context of allIfContexts) {
+                    // 如果是单行If，检查这个ElseIf/Else是否紧跟在它后面
+                    if (context.isSingleLine && i === context.startLine + 1) {
                         inValidIfBlock = true;
+                        parentIfContext = context;
+                        break;
+                    }
+                    
+                    // 如果是多行If，检查这个ElseIf/Else是否在它的范围内
+                    if (!context.isSingleLine && 
+                        i > context.startLine && 
+                        (context.endLine === undefined || i < context.endLine)) {
+                        inValidIfBlock = true;
+                        parentIfContext = context;
                         break;
                     }
                 }
@@ -128,26 +315,55 @@ export class RtBasicDiagnosticProvider {
                     continue;
                 }
                 
-                // 对于ElseIf语句，检查Then后面是否有语句
-                if (isElseIf) {
-                    const thenIndex = text.toLowerCase().indexOf("then");
-                    if (thenIndex >= 0) {
-                        const afterThen = text.substring(thenIndex + 4).trim();
-                        if (!afterThen || afterThen.startsWith("'") || afterThen.toLowerCase().startsWith("rem ")) {
+                // 特别处理Sub内部的If语句
+                if (parentIfContext && parentIfContext.parentSub) {
+                    // 在Sub内部的If语句需要特别注意ElseIf和Else的形式
+                    if (isElseIf) {
+                        // 检查ElseIf是否有Then关键字
+                        if (!text.toLowerCase().includes('then')) {
                             diagnostics.push(new vscode.Diagnostic(
                                 line.range,
-                                `单行ElseIf语句必须在Then后面包含语句`,
+                                `ElseIf语句必须包含Then关键字`,
+                                vscode.DiagnosticSeverity.Error
+                            ));
+                        }
+                        
+                        // 在Sub内部，ElseIf的形式必须与父If一致
+                        const isElseIfSingleLine = this.isSingleLineStatement(text);
+                        if (parentIfContext.isSingleLine !== isElseIfSingleLine) {
+                            diagnostics.push(new vscode.Diagnostic(
+                                line.range,
+                                parentIfContext.isSingleLine 
+                                    ? `单行If语句后的ElseIf也必须是单行形式` 
+                                    : `多行If块内的ElseIf不能是单行形式`,
                                 vscode.DiagnosticSeverity.Error
                             ));
                         }
                     } else {
-                        diagnostics.push(new vscode.Diagnostic(
-                            line.range,
-                            `ElseIf语句必须包含Then关键字`,
-                            vscode.DiagnosticSeverity.Error
-                        ));
+                        // 检查Else语句
+                        const isElseSingleLine = text.trim().toLowerCase() !== 'else';
+                        if (parentIfContext.isSingleLine !== isElseSingleLine) {
+                            diagnostics.push(new vscode.Diagnostic(
+                                line.range,
+                                parentIfContext.isSingleLine 
+                                    ? `单行If语句后的Else也必须是单行形式，应包含语句` 
+                                    : `多行If块内的Else必须是独立的一行`,
+                                vscode.DiagnosticSeverity.Error
+                            ));
+                        }
                     }
                 }
+            }
+        }
+        
+        // 检查未闭合的If块
+        for (const context of allIfContexts) {
+            if (!context.isSingleLine && context.endLine === undefined) {
+                diagnostics.push(new vscode.Diagnostic(
+                    document.lineAt(context.startLine).range,
+                    `多行If语句必须有对应的End If`,
+                    vscode.DiagnosticSeverity.Error
+                ));
             }
         }
     }
