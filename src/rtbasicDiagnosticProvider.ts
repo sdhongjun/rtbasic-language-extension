@@ -59,25 +59,35 @@ export class RtBasicDiagnosticProvider {
     }
 
     private checkElseIfElseStatements(document: vscode.TextDocument, blocks: ControlBlock[], diagnostics: vscode.Diagnostic[]) {
-        let lastIfLine = -1;
-        let lastIfWasSingleLine = false;
+        const ifBlockStack: ControlBlock[] = [];
+        
+        // 遍历所有控制块，构建if块栈
+        for (const block of blocks) {
+            if (block.type === 'If') {
+                if (block.isSingleLine) {
+                    // 单行if语句不压入栈
+                    continue;
+                }
+                if (!block.hasEndToken) {
+                    ifBlockStack.push(block);
+                }
+            } else if (block.type === 'End If') {
+                // 弹出最近的if块
+                const lastIf = ifBlockStack[ifBlockStack.length - 1];
+                if (lastIf && lastIf.type === 'If') {
+                    ifBlockStack.pop();
+                }
+            }
+        }
 
         // 遍历每一行检查ElseIf和Else语句
         for (let i = 0; i < document.lineCount; i++) {
             const line = document.lineAt(i);
             const text = line.text.trim();
             
-            // 检查是否是If语句
-            if (/^If\b/i.test(text)) {
-                lastIfLine = i;
-                lastIfWasSingleLine = /^If\b.*?\bThen\b.*[^'].*$/i.test(text) && 
-                                    !/^If\b.*?\bThen\b\s*$/i.test(text);
-            }
-            
             // 检查是否是ElseIf或Else语句
             if (/^ElseIf\b/i.test(text) || /^Else\b/i.test(text)) {
                 const isElseIf = /^ElseIf\b/i.test(text);
-                let foundValidIfBlock = false;
                 
                 // 检查是否是单行ElseIf语句
                 const isSingleLineElseIf = isElseIf && 
@@ -96,28 +106,26 @@ export class RtBasicDiagnosticProvider {
                             `单行If/ElseIf语句后面的${isElseIf ? 'ElseIf' : 'Else'}语句也必须是单行形式`,
                             vscode.DiagnosticSeverity.Error
                         ));
+                        continue;
                     }
                 }
                 
-                // 查找最近的未闭合的If块或检查是否跟随在单行If/ElseIf之后
-                if (lastIfWasSingleLine && i === lastIfLine + 1) {
-                    foundValidIfBlock = true;
-                } else {
-                    for (const block of blocks) {
-                        if (block.type === 'If' && !block.isSingleLine &&
-                            block.range.contains(line.range) && !block.hasEndToken) {
-                            foundValidIfBlock = true;
-                            break;
-                        }
+                // 检查是否在有效的if块范围内
+                let inValidIfBlock = false;
+                for (const block of ifBlockStack) {
+                    if (block.range.contains(line.range)) {
+                        inValidIfBlock = true;
+                        break;
                     }
                 }
                 
-                if (!foundValidIfBlock) {
+                if (!inValidIfBlock) {
                     diagnostics.push(new vscode.Diagnostic(
                         line.range,
-                        `${isElseIf ? 'ElseIf' : 'Else'} 语句必须在有效的 If 块内部或紧跟在单行If/ElseIf语句后`,
+                        `${isElseIf ? 'ElseIf' : 'Else'} 语句必须在有效的 If 块内部`,
                         vscode.DiagnosticSeverity.Error
                     ));
+                    continue;
                 }
                 
                 // 对于ElseIf语句，检查Then后面是否有语句
@@ -328,34 +336,39 @@ export class RtBasicDiagnosticProvider {
         }
     }
 
-    private isBlockStart(type: string): boolean {
-        // 使用 ControlBlockType 类型检查
-        return ['If', 'For', 'While', 'Select'].includes(type);
+    private isBlockStart(type: ControlBlockType | string): type is ControlBlockType {
+        return ['If', 'For', 'While', 'Select'].includes(type as string);
     }
 
-    private isBlockEnd(type: string): boolean {
+    private isBlockEnd(type: ControlBlockType): boolean {
         return ['End If', 'Next', 'Wend', 'End Select'].includes(type);
     }
 
-    private doBlockTypesMatch(startType: string, endType: string): boolean {
-        const matchingPairs: Record<string, string> = {
-            'If': 'End If',
-            'For': 'Next',
-            'While': 'Wend',
-            'Select': 'End Select'
-        };
-
-        return matchingPairs[startType] === endType;
+    private doBlockTypesMatch(startType: ControlBlockType, endType: ControlBlockType): boolean {
+        const expectedEndType = this.getMatchingEndType(startType);
+        if (!expectedEndType) {
+            console.warn(`未知的控制块开始类型: ${startType}`);
+            return false;
+        }
+        return expectedEndType === endType;
     }
 
-    private getMatchingEndType(startType: string): string {
-        const matchingPairs: Record<string, string> = {
+    private getMatchingEndType(startType: string): ControlBlockType {
+        const matchingPairs: Record<string, ControlBlockType> = {
             'If': 'End If',
             'For': 'Next',
             'While': 'Wend',
             'Select': 'End Select'
         };
 
-        return matchingPairs[startType] || '未知';
+        if (!matchingPairs[startType]) {
+            console.warn(`无法确定控制块类型 ${startType} 的匹配结束类型`);
+            // 根据开始类型返回更合理的默认值
+            if (startType.includes('If')) return 'End If';
+            if (startType.includes('For')) return 'Next';
+            if (startType.includes('While')) return 'Wend';
+            if (startType.includes('Select')) return 'End Select';
+        }
+        return matchingPairs[startType] || 'End If';
     }
 }

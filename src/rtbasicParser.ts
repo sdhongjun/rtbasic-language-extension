@@ -13,8 +13,10 @@ export interface RtBasicVariable {
   sourceFile?: string;
 }
 
-// 新增：控制语句块类型
-export type ControlBlockType = "If" | "For" | "While" | "Select";
+// 控制语句块类型（包含开始和结束块）
+export type ControlBlockType = 
+  'If' | 'For' | 'While' | 'Select'  // 开始块类型
+  | 'End If' | 'Next' | 'Wend' | 'End Select';  // 结束块类型
 
 export interface ControlBlock {
   type: ControlBlockType;
@@ -67,23 +69,62 @@ export interface RtBasicSymbol {
 }
 
 export class RtBasicParser {
-  // 预编译的正则表达式
-  private static readonly CFUNC_REGEX = /^\s*DEFINE_CFUNC\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+?);/i;
-  private static readonly IF_START_REGEX = /^If\b.*?\bThen\b(?:\s+([^'\r\n]*))?/i;
-  private static readonly FOR_START_REGEX = /^For\b.*?\bTo\b.*$/i;
-  private static readonly WHILE_START_REGEX = /^While\b.*$/i;
-  private static readonly SELECT_START_REGEX = /^Select\s+Case\b.*$/i;
-  private static readonly IF_END_REGEX = /^End\s+If\b/i;
-  private static readonly SELECT_END_REGEX = /^End\s+Select\b/i;
-  private static readonly FOR_END_REGEX = /^Next\b/i;
-  private static readonly WHILE_END_REGEX = /^Wend\b/i;
-  private static readonly ELSEIF_REGEX = /^ElseIf\b.*?\bThen\b/i;
-  private static readonly ELSE_REGEX = /^Else\b/i;
-  private static readonly GLOBAL_DIM_REGEX = /global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i;
-  private static readonly DIM_REGEX = /dim\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i;
-  private static readonly LOCAL_REGEX = /local\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i;
-  private static readonly VAR_DEFINITION_REGEX = /([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((\d+)\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i;
-  private static readonly ARRAY_REGEX = /(\w+)\s*\((\d+)\)/;
+  // 预编译的正则表达式 - 按功能分组
+  private static readonly REGEX = {
+    // 函数和结构体相关
+    CFUNC: /^\s*DEFINE_CFUNC\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+?);/i,
+    
+    // If语句相关
+    IF: {
+      START: /^If\b.*?\bThen\b(?:\s+([^'\r\n]*))?/i,
+      SINGLE_LINE: /^If\b.*?\bThen\b\s+(?!\s*')(?:[^'\r\n]+)(?=\s*(?:'|$))(?!\s*(?:ElseIf|Else|End\s+If)\b)/i,
+      END: /^End\s+If\b/i,
+      ELSEIF: /^ElseIf\b.*?(?:\bThen\b)?/i,
+      ELSE: /^Else\b/i,
+      ELSEIF_THEN_SINGLE_LINE: /^ElseIf\b.*?\bThen\b\s+[^'\r\n]+(?!\s+ElseIf\b|\s+Else\b|\s+End\s+If\b)/i
+    },
+    
+    // 循环语句相关
+    FOR: {
+      START: /^For\b.*?\bTo\b.*$/i,
+      END: /^Next\b/i
+    },
+    WHILE: {
+      START: /^While\b.*$/i,
+      END: /^Wend\b/i
+    },
+    
+    // Select语句相关
+    SELECT: {
+      START: /^Select\s+Case\b.*$/i,
+      END: /^End\s+Select\b/i,
+      CASE: /^Case\s+.*$/i
+    },
+    
+    // 变量声明相关
+    VARIABLE: {
+      GLOBAL_DIM: /global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
+      DIM: /dim\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i,
+      LOCAL: /local\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i,
+      DEFINITION: /([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((\d+)\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
+      ARRAY: /(\w+)\s*\((\d+)\)/
+    }
+  };
+  
+  // 控制块类型映射
+  private static readonly BLOCK_TYPE_MAP = [
+    { regex: RtBasicParser.REGEX.FOR.START, type: "For" as ControlBlockType },
+    { regex: RtBasicParser.REGEX.WHILE.START, type: "While" as ControlBlockType },
+    { regex: RtBasicParser.REGEX.SELECT.START, type: "Select" as ControlBlockType }
+  ];
+
+  // 结束标记映射
+  private static readonly END_TOKEN_MAP = [
+    { regex: RtBasicParser.REGEX.IF.END, endType: 'End If', startType: 'If' },
+    { regex: RtBasicParser.REGEX.SELECT.END, endType: 'End Select', startType: 'Select' },
+    { regex: RtBasicParser.REGEX.FOR.END, endType: 'Next', startType: 'For' },
+    { regex: RtBasicParser.REGEX.WHILE.END, endType: 'Wend', startType: 'While' }
+  ];
 
   private symbols: RtBasicSymbol = {
     variables: [],
@@ -122,7 +163,7 @@ export class RtBasicParser {
       const lineRange = new vscode.Range(i, 0, i, line.text.length);
 
       // 解析C函数导入
-      const cFuncMatch = text.match(/^\s*DEFINE_CFUNC\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(.+?);/i);
+      const cFuncMatch = text.match(RtBasicParser.REGEX.CFUNC);
       if (cFuncMatch) {
         const rtbasicName = cFuncMatch[1];
         const cFunctionDecl = cFuncMatch[2];
@@ -137,12 +178,12 @@ export class RtBasicParser {
       }
 
       // 检查是否是ElseIf或Else语句
-      if (RtBasicParser.ELSEIF_REGEX.test(text) || RtBasicParser.ELSE_REGEX.test(text)) {
+      if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
         // 检查是否是单行ElseIf语句
         const blockStartInfo = this.detectControlBlockStart(text);
         const isSingleLineElseIf = blockStartInfo && blockStartInfo.blockType === "If" && 
-                                  blockStartInfo.isSingleLine && RtBasicParser.ELSEIF_REGEX.test(text);
-        const isElse = RtBasicParser.ELSE_REGEX.test(text);
+                                  blockStartInfo.isSingleLine && RtBasicParser.REGEX.IF.ELSEIF.test(text);
+        const isElse = RtBasicParser.REGEX.IF.ELSE.test(text);
         
         // 处理单行ElseIf语句
         if (isSingleLineElseIf) {
@@ -207,7 +248,7 @@ export class RtBasicParser {
               );
               
               // 标记ElseIf/Else为已闭合，因为它们不需要额外的End If
-              if (RtBasicParser.ELSEIF_REGEX.test(text) || RtBasicParser.ELSE_REGEX.test(text)) {
+              if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
                 block.hasEndToken = true;
               }
               
@@ -438,7 +479,7 @@ export class RtBasicParser {
     parentSub?: string,
     parentBlock?: ControlBlock
   ): RtBasicVariable {
-    const arrayMatch = varName.match(RtBasicParser.ARRAY_REGEX);
+    const arrayMatch = varName.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
     if (arrayMatch) {
       return {
         name: arrayMatch[1],
@@ -495,7 +536,7 @@ export class RtBasicParser {
     lineRange: vscode.Range
   ): void {
     // 更新控制块范围
-    block.range = new vscode.Range(block.range.start, lineRange.end);
+    block.range = new vscode.Range(block.range.start, new vscode.Position(lineRange.end.line, Number.MAX_SAFE_INTEGER));
 
     // 收集控制块内的变量
     if (!block.variables) {
@@ -527,99 +568,44 @@ export class RtBasicParser {
   /**
    * 检查控制块结束类型是否匹配
    */
-  private isMatchingBlockEnd(endType: string, blockType: ControlBlockType): boolean {
-    // 处理 "End If" 的情况，将其转换为 "if"
-    if (endType.toLowerCase() === 'end if') {
-      endType = 'if';
-    }
-    
-    const endTypeMap: Record<string, ControlBlockType> = {
-      'if': 'If',
-      'select': 'Select',
-      'next': 'For',
-      'wend': 'While'
+  private isMatchingBlockEnd(endType: ControlBlockType, blockType: ControlBlockType): boolean {
+    const matchingPairs: Record<string, ControlBlockType> = {
+      'If': 'End If',
+      'For': 'Next',
+      'While': 'Wend',
+      'Select': 'End Select'
     };
     
-    return endTypeMap[endType.toLowerCase()] === blockType;
+    return matchingPairs[blockType] === endType;
   }
 
   /**
    * 检测控制块的开始
    */
   private detectControlBlockStart(text: string): { blockType: ControlBlockType; isSingleLine: boolean } | undefined {
-    // 检查 If 语句
-    const ifThenMatch = text.match(RtBasicParser.IF_START_REGEX);
-    if (ifThenMatch) {
-      let isSingleLine = false;
-      
-      // 检查是否是单行 if 语句 - 如果 then 后面有内容
-      if (ifThenMatch[1]) {
-        const afterThen = ifThenMatch[1].trim();
-        
-        // 检查 then 后是否有实际语句（不是空白且不以注释开头）
-        if (afterThen && !afterThen.startsWith("'") && !afterThen.toLowerCase().startsWith("rem ")) {
-          // 检查是否有注释，如果有，提取注释前的实际语句
-          const commentPos = afterThen.indexOf("'");
-          const actualStatement = commentPos >= 0 ? afterThen.substring(0, commentPos).trim() : afterThen;
-          
-          // 如果实际语句不为空，并且不包含 End If，则这是一个单行if语句
-          if (actualStatement && !RtBasicParser.IF_END_REGEX.test(actualStatement)) {
-            isSingleLine = true;
-          }
-        }
-      }
-      
-      return { blockType: "If", isSingleLine };
+    // 检查单行If语句（包括ElseIf Then单行语句）
+    if (RtBasicParser.REGEX.IF.SINGLE_LINE.test(text) || RtBasicParser.REGEX.IF.ELSEIF_THEN_SINGLE_LINE.test(text)) {
+      return { blockType: "If", isSingleLine: true };
     }
     
-    // 检查 ElseIf 语句
-    const elseIfThenMatch = text.match(RtBasicParser.ELSEIF_REGEX);
-    if (elseIfThenMatch) {
-      let isSingleLine = false;
-      
-      // 提取 Then 后面的内容
-      const thenIndex = text.toLowerCase().indexOf("then");
-      if (thenIndex >= 0 && thenIndex + 4 < text.length) {
-        const afterThen = text.substring(thenIndex + 4).trim();
-        
-        // 检查 then 后是否有实际语句（不是空白且不以注释开头）
-        if (afterThen && !afterThen.startsWith("'") && !afterThen.toLowerCase().startsWith("rem ")) {
-          // 检查是否有注释，如果有，提取注释前的实际语句
-          const commentPos = afterThen.indexOf("'");
-          const actualStatement = commentPos >= 0 ? afterThen.substring(0, commentPos).trim() : afterThen;
-          
-          // 如果实际语句不为空，则这是一个单行ElseIf语句
-          if (actualStatement) {
-            isSingleLine = true;
-          }
-        }
-      }
-      
-      // 注意：ElseIf 不是一个新的控制块，而是 If 块的一部分
-      // 我们返回 "If" 作为块类型，以便与现有的 If 块关联
-      return { blockType: "If", isSingleLine };
+    // 检查复杂If语句（包含ElseIf/Else分支）
+    if (RtBasicParser.REGEX.IF.START.test(text)) {
+      return { blockType: "If", isSingleLine: false };
     }
     
-    // 检查其他控制块类型
-    const blockTypeMatches = [
-      { regex: RtBasicParser.FOR_START_REGEX, type: "For" as ControlBlockType },
-      { regex: RtBasicParser.WHILE_START_REGEX, type: "While" as ControlBlockType },
-      { regex: RtBasicParser.SELECT_START_REGEX, type: "Select" as ControlBlockType }
-    ];
-
-    for (const { regex, type } of blockTypeMatches) {
-      if (text.match(regex)) {
-        return { blockType: type, isSingleLine: false };
-      }
+    // 检查 ElseIf 或 Else 语句 - 这些不是新的控制块开始
+    if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
+      return undefined;
     }
-
-    return undefined;
+    
+    // 使用预定义的映射表简化其他控制块类型检查
+    const match = RtBasicParser.BLOCK_TYPE_MAP.find(({ regex }) => regex.test(text));
+    return match ? { blockType: match.type, isSingleLine: false } : undefined;
   }
 
   /**
    * 检测控制块的结束
    */
-
   private detectControlBlockEnd(text: string, activeControlBlocks: ControlBlock[]): 
     { matchingBlock: ControlBlock; matchingIndex: number } | undefined {
     
@@ -627,41 +613,39 @@ export class RtBasicParser {
       return undefined;
     }
 
-    // 检查是否是ElseIf或Else语句
-    if (RtBasicParser.ELSEIF_REGEX.test(text) || RtBasicParser.ELSE_REGEX.test(text)) {
-      // 检查是否是单行ElseIf语句
-      const blockStartInfo = this.detectControlBlockStart(text);
-      const isSingleLineElseIf = blockStartInfo && blockStartInfo.blockType === "If" && 
-                                blockStartInfo.isSingleLine && RtBasicParser.ELSEIF_REGEX.test(text);
-      
-      // 单行ElseIf语句不需要结束标记，它们自己就是完整的语句
-      // ElseIf和Else不是控制块的结束，而是If块的一部分
-      // 我们不需要在这里处理它们，因为它们不会导致控制块结束
-      return undefined;
+    // 检查是否是ElseIf或Else语句 - 这些不是控制块结束标记
+    if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
+      // 从栈顶向下查找最近的非单行If块
+      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+        const block = activeControlBlocks[i];
+        if (block.type === "If" && !block.isSingleLine) {
+          // 更新If块的范围以包含ElseIf/Else分支
+          block.range = new vscode.Range(
+            block.range.start,
+            new vscode.Position(block.range.end.line + 1, 0)
+          );
+          // 标记为未结束，因为还需要等待End If
+          block.hasEndToken = false;
+          break; // 找到匹配的If块后退出循环
+        }
+      }
+      return undefined; // ElseIf/Else不是控制块结束标记
     }
 
-    // 定义结束标记和对应的类型
-    const endMatches = [
-      { regex: RtBasicParser.IF_END_REGEX, endType: 'End If' },
-      { regex: RtBasicParser.SELECT_END_REGEX, endType: 'End Select' },
-      { regex: RtBasicParser.FOR_END_REGEX, endType: 'Next' },
-      { regex: RtBasicParser.WHILE_END_REGEX, endType: 'Wend' }
-    ];
-
-    // 查找匹配的结束标记
-    for (const { regex, endType } of endMatches) {
+    // 使用预定义的END_TOKEN_MAP检查所有可能的结束标记
+    for (const { regex, startType } of RtBasicParser.END_TOKEN_MAP) {
       if (regex.test(text)) {
         // 从栈顶向下查找匹配的块
         for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
           const block = activeControlBlocks[i];
           
-          // 首先检查是否是单行语句
+          // 跳过单行语句，它们不需要结束标记
           if (block.isSingleLine) {
-            continue; // 跳过单行语句，它们不需要结束标记
+            continue;
           }
           
           // 检查类型是否匹配
-          if (this.isMatchingBlockEnd(endType, block.type)) {
+          if (block.type === startType) {
             // 标记已找到结束标记
             block.hasEndToken = true;
             return { matchingBlock: block, matchingIndex: i };
@@ -683,8 +667,8 @@ export class RtBasicParser {
     currentControlBlock?: ControlBlock
   ): { variable: RtBasicVariable; scope: "global" | "local" | "file" | "block" } | undefined {
     // 检查全局变量声明
-    if (text.toLowerCase().startsWith("global dim")) {
-      const globalMatch = text.match(RtBasicParser.GLOBAL_DIM_REGEX);
+    if (text.toLowerCase().startsWith("global")) {
+      const globalMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_DIM);
       if (globalMatch) {
         const varName = globalMatch[1].trim();
         const structType = globalMatch[2];
@@ -702,7 +686,7 @@ export class RtBasicParser {
     
     // 检查文件变量声明
     else if (text.toLowerCase().startsWith("dim")) {
-      const dimMatch = text.match(RtBasicParser.DIM_REGEX);
+      const dimMatch = text.match(RtBasicParser.REGEX.VARIABLE.DIM);
       if (dimMatch) {
         const varName = dimMatch[1].trim();
         const structType = dimMatch[2];
@@ -720,7 +704,7 @@ export class RtBasicParser {
     
     // 检查局部变量声明
     else if (text.toLowerCase().startsWith("local")) {
-      const localMatch = text.match(RtBasicParser.LOCAL_REGEX);
+      const localMatch = text.match(RtBasicParser.REGEX.VARIABLE.LOCAL);
       if (localMatch && (currentSub || currentControlBlock)) {
         const varName = localMatch[1].trim();
         const scope = currentControlBlock ? "block" : "local";
@@ -746,7 +730,7 @@ export class RtBasicParser {
 
     return paramsText.split(",").map((param) => {
       param = param.trim();
-      const arrayMatch = param.match(RtBasicParser.ARRAY_REGEX);
+      const arrayMatch = param.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
       
       if (arrayMatch) {
         return {
