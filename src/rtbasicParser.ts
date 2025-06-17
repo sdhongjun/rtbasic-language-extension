@@ -197,7 +197,7 @@ export class RtBasicParser {
               parentBlock: lastSingleLineIfBlock.parentBlock, // 与前一个单行If块共享同一个父块
               variables: [],
               isSingleLine: true,
-              hasEndToken: true // 单行ElseIf语句不需要结束标记
+              hasEndToken: false // 单行ElseIf语句需要结束标记，与If语句共享End If
             };
             
             // 将新块添加到符号表
@@ -222,7 +222,7 @@ export class RtBasicParser {
               parentBlock: lastSingleLineIfBlock.parentBlock, // 与前一个单行If块共享同一个父块
               variables: [],
               isSingleLine: false,
-              hasEndToken: true // Else也需要标记为已闭合，因为它不需要额外的End If
+              hasEndToken: false // Else需要与If语句共享End If结束标识
             };
             
             // 将新块添加到符号表
@@ -247,10 +247,8 @@ export class RtBasicParser {
                 lineRange.end
               );
               
-              // 标记ElseIf/Else为已闭合，因为它们不需要额外的End If
-              if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
-                block.hasEndToken = true;
-              }
+              // ElseIf/Else是If语句的一部分，不要标记为已闭合
+              // 它们需要与If语句共享同一个End If结束标识
               
               break;
             }
@@ -583,8 +581,13 @@ export class RtBasicParser {
    * 检测控制块的开始
    */
   private detectControlBlockStart(text: string): { blockType: ControlBlockType; isSingleLine: boolean } | undefined {
-    // 检查单行If语句（包括ElseIf Then单行语句）
-    if (RtBasicParser.REGEX.IF.SINGLE_LINE.test(text) || RtBasicParser.REGEX.IF.ELSEIF_THEN_SINGLE_LINE.test(text)) {
+    // 检查单行If语句
+    if (RtBasicParser.REGEX.IF.SINGLE_LINE.test(text)) {
+      return { blockType: "If", isSingleLine: true };
+    }
+    
+    // 检查单行ElseIf语句 - 这些应该与前面的If语句关联，而不是作为新的控制块
+    if (RtBasicParser.REGEX.IF.ELSEIF_THEN_SINGLE_LINE.test(text)) {
       return { blockType: "If", isSingleLine: true };
     }
     
@@ -618,7 +621,8 @@ export class RtBasicParser {
       // 从栈顶向下查找最近的非单行If块
       for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
         const block = activeControlBlocks[i];
-        if (block.type === "If" && !block.isSingleLine) {
+        if (block.type === "If") {
+          if (block.isSingleLine) continue;
           // 更新If块的范围以包含ElseIf/Else分支
           block.range = new vscode.Range(
             block.range.start,
@@ -648,6 +652,24 @@ export class RtBasicParser {
           if (block.type === startType) {
             // 标记已找到结束标记
             block.hasEndToken = true;
+            
+            // 特殊处理End If语句，确保关闭所有相关的ElseIf和Else块
+            if (startType === "If" && regex === RtBasicParser.REGEX.IF.END) {
+              // 查找所有与此If块相关的ElseIf和Else块
+              for (let j = i + 1; j < activeControlBlocks.length; j++) {
+                const relatedBlock = activeControlBlocks[j];
+                if (relatedBlock.type === "If" && relatedBlock.parentBlock === block.parentBlock) {
+                  // 标记相关块已找到结束标记
+                  relatedBlock.hasEndToken = true;
+                  // 更新相关块的范围
+                  relatedBlock.range = new vscode.Range(
+                    relatedBlock.range.start,
+                    new vscode.Position(block.range.end.line, text.length)
+                  );
+                }
+              }
+            }
+            
             return { matchingBlock: block, matchingIndex: i };
           }
         }
