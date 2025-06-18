@@ -13,10 +13,8 @@ export interface RtBasicVariable {
   sourceFile?: string;
 }
 
-// 控制语句块类型（包含开始和结束块）
-export type ControlBlockType = 
-  'If' | 'For' | 'While' | 'Select'  // 开始块类型
-  | 'End If' | 'Next' | 'Wend' | 'End Select';  // 结束块类型
+// 控制语句块类型
+export type ControlBlockType = 'If' | 'For' | 'While' | 'Select';
 
 export interface ControlBlock {
   type: ControlBlockType;
@@ -157,7 +155,6 @@ export class RtBasicParser {
     let currentStructure: RtBasicStructure | undefined;
     let activeControlBlocks: ControlBlock[] = [];
     let currentControlBlock: ControlBlock | undefined;
-    let lastSingleLineIfBlock: ControlBlock | undefined; // 跟踪最后一个单行If/ElseIf块
 
     for (let i = 0; i < document.lineCount; i++) {
       const line = document.lineAt(i);
@@ -179,182 +176,22 @@ export class RtBasicParser {
         continue;
       }
 
-      // 检查是否是ElseIf或Else语句
-      if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
-        // 检查是否是单行ElseIf语句
-        const blockStartInfo = this.detectControlBlockStart(text);
-        const isSingleLineElseIf = blockStartInfo && blockStartInfo.blockType === "If" && 
-                                  blockStartInfo.isSingleLine && RtBasicParser.REGEX.IF.ELSEIF.test(text);
-        const isElse = RtBasicParser.REGEX.IF.ELSE.test(text);
-        
-        // 验证ElseIf/Else是否在有效的If块内部
-        let validIfBlockFound = false;
-        
-        // 首先检查是否有单行If块可以关联
-        if (lastSingleLineIfBlock) {
-          validIfBlockFound = true;
-          
-          // 处理单行ElseIf语句
-          if (isSingleLineElseIf) {
-            // 创建一个新的单行ElseIf块
-            const elseIfBlock: ControlBlock = {
-              type: "If",
-              range: lineRange,
-              parentSub: currentSub?.name,
-              parentBlock: lastSingleLineIfBlock.parentBlock, // 与前一个单行If块共享同一个父块
-              variables: [],
-              isSingleLine: true,
-              hasEndToken: false, // 单行ElseIf语句需要结束标记，与If语句共享End If
-              isElseIf: true
-            };
-            
-            // 将新块添加到符号表
-            this.symbols.controlBlocks.push(elseIfBlock);
-            
-            // 更新最后一个单行If块
-            lastSingleLineIfBlock = elseIfBlock;
-          }
-          // 处理Else语句
-          else if (isElse) {
-            // 创建一个Else块（不是单行的，因为Else没有条件）
-            const elseBlock: ControlBlock = {
-              type: "If", // 仍然是If类型的一部分
-              range: lineRange,
-              parentSub: currentSub?.name,
-              parentBlock: lastSingleLineIfBlock.parentBlock, // 与前一个单行If块共享同一个父块
-              variables: [],
-              isSingleLine: false,
-              hasEndToken: false, // Else需要与If语句共享End If结束标识
-              isElse: true
-            };
-            
-            // 将新块添加到符号表
-            this.symbols.controlBlocks.push(elseBlock);
-            
-            // 重置最后一个单行If块，因为Else后面不能再有ElseIf
-            lastSingleLineIfBlock = undefined;
-          }
-        }
-        // 然后检查活动控制块栈中是否有有效的If块
-        else if (activeControlBlocks.length > 0) {
-          // 从栈顶向下查找最近的If块
-          for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
-            const block = activeControlBlocks[i];
-            if (block.type === "If" && !block.isSingleLine) {
-              validIfBlockFound = true;
-              
-              // 更新If块的范围以包含ElseIf/Else语句
-              block.range = new vscode.Range(
-                block.range.start,
-                lineRange.end
-              );
-              
-              // 创建新的ElseIf/Else块并添加到控制块栈中
-              const newBlock: ControlBlock = {
-                type: "If",
-                range: lineRange,
-                parentSub: currentSub?.name,
-                parentBlock: block,
-                variables: [],
-                isSingleLine: false,
-                hasEndToken: false,
-                isElseIf: isSingleLineElseIf || RtBasicParser.REGEX.IF.ELSEIF.test(text),
-                isElse: isElse
-              };
-              
-              // 将新块添加到符号表和活动控制块栈
-              this.symbols.controlBlocks.push(newBlock);
-              activeControlBlocks.push(newBlock);
-              currentControlBlock = newBlock;
-              
-              break;
-            }
-          }
-        }
-        
-        // 如果没有找到有效的If块，报告错误
-        if (!validIfBlockFound) {
-          // 这里我们可以添加错误处理逻辑，例如将错误信息添加到诊断集合中
-          // 由于我们没有直接访问诊断集合的方法，我们可以在这里标记这个块为无效
-          const invalidBlock: ControlBlock = {
-            type: "If",
-            range: lineRange,
-            parentSub: currentSub?.name,
-            variables: [],
-            isSingleLine: false,
-            hasEndToken: false,
-            isElseIf: RtBasicParser.REGEX.IF.ELSEIF.test(text),
-            isElse: isElse,
-            // 添加一个标记，表示这是一个无效的块
-            // 这个标记可以在后续的诊断过程中使用
-            // 注意：这不是ControlBlock接口的一部分，但TypeScript允许额外的属性
-            // @ts-ignore
-            isInvalid: true
-          };
-          
-          this.symbols.controlBlocks.push(invalidBlock);
-        }
-        
+      // 处理If语句相关的控制块
+      if (this.handleIfStatement(text, lineRange, currentSub, activeControlBlocks)) {
         continue;
       }
 
-      // 检查控制语句块开始
-      const blockStartInfo = this.detectControlBlockStart(text);
-      if (blockStartInfo) {
-        const { blockType, isSingleLine, isElseIf, isElse } = blockStartInfo;
-        
-        if (blockType === "If" && isSingleLine) {
-          // 单行 if 语句处理 - 不需要 end if
-          const singleLineIfBlock = this.handleBlockStart(
-            blockType, 
-            lineRange, 
-            currentSub, 
-            currentControlBlock, 
-            true,
-            isElseIf,
-            isElse
-          );
-          
-          // 直接添加到符号表，不加入活动控制块栈
-          this.symbols.controlBlocks.push(singleLineIfBlock);
-        } else {
-          // 常规多行控制块处理 - 需要对应的结束标记
-          const newBlock = this.handleBlockStart(
-            blockType, 
-            lineRange, 
-            currentSub, 
-            currentControlBlock, 
-            false,
-            isElseIf,
-            isElse
-          );
-          
-          // 将当前控制块加入活动控制块栈
-          activeControlBlocks.push(newBlock);
-          currentControlBlock = newBlock;
-        }
-        
+      // 处理For和While语句
+      if (this.handleLoopStatement(text, lineRange, currentSub, activeControlBlocks)) {
         continue;
       }
 
-      // 检查控制语句块结束
-      const blockEndInfo = this.detectControlBlockEnd(text, activeControlBlocks);
-      if (blockEndInfo && blockEndInfo.matchingBlock) {
-        const { matchingBlock, matchingIndex } = blockEndInfo;
-        
-        // 处理从匹配块到栈顶的所有块
-        for (let i = activeControlBlocks.length - 1; i >= matchingIndex; i--) {
-          this.handleBlockEnd(activeControlBlocks[i], lineRange);
-        }
-
-        // 从活动控制块栈中移除所有已处理的块
-        activeControlBlocks.splice(matchingIndex);
-
+      // 处理控制块结束
+      if (this.handleControlBlockEnd(text, lineRange, activeControlBlocks)) {
         // 更新当前控制块为栈顶的控制块（如果有的话）
         currentControlBlock = activeControlBlocks.length > 0
           ? activeControlBlocks[activeControlBlocks.length - 1]
           : undefined;
-
         continue;
       }
 
@@ -393,6 +230,7 @@ export class RtBasicParser {
             parameters: this.parseParameters(match[2]),
             range: new vscode.Range(line.range.start, line.range.end),
             isGlobal: true,
+            sourceFile: document.uri.fsPath
           };
           this.symbols.subs.push(sub);
           currentSub = sub;
@@ -408,6 +246,7 @@ export class RtBasicParser {
             parameters: this.parseParameters(match[2]),
             range: new vscode.Range(line.range.start, line.range.end),
             isGlobal: false,
+            sourceFile: document.uri.fsPath
           };
           this.symbols.subs.push(sub);
           currentSub = sub;
@@ -427,6 +266,7 @@ export class RtBasicParser {
             members: [],
             range: new vscode.Range(line.range.start, line.range.end),
             isGlobal: true,  // 设置为全局作用域
+            sourceFile: document.uri.fsPath
           };
         }
       }
@@ -439,6 +279,7 @@ export class RtBasicParser {
             members: [],
             range: new vscode.Range(line.range.start, line.range.end),
             isGlobal: false,  // 设置为文件作用域
+            sourceFile: document.uri.fsPath
           };
         }
       }
@@ -511,6 +352,238 @@ export class RtBasicParser {
   }
 
   /**
+   * 处理If语句相关的控制块
+   * 包括单行if、多行if-then、带elseif的if和带else的if
+   */
+  private handleIfStatement(
+    text: string,
+    lineRange: vscode.Range,
+    currentSub: RtBasicSub | undefined,
+    activeControlBlocks: ControlBlock[]
+  ): boolean {
+    // 检查单行If语句
+    if (RtBasicParser.REGEX.IF.SINGLE_LINE.test(text)) {
+      const singleLineIfBlock: ControlBlock = {
+        type: "If",
+        range: lineRange,
+        parentSub: currentSub?.name,
+        variables: [],
+        isSingleLine: true,
+        hasEndToken: true // 单行if语句立即标记为已结束
+      };
+      
+      // 如果在其他控制块内，设置父块
+      if (activeControlBlocks.length > 0) {
+        singleLineIfBlock.parentBlock = activeControlBlocks[activeControlBlocks.length - 1];
+      }
+      
+      this.symbols.controlBlocks.push(singleLineIfBlock);
+      return true;
+    }
+
+    // 检查ElseIf语句
+    if (RtBasicParser.REGEX.IF.ELSEIF.test(text)) {
+      // 查找最近的未结束的If块
+      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+        const block = activeControlBlocks[i];
+        if (block.type === "If" && !block.hasEndToken && !block.isElseIf) {
+          const elseIfBlock: ControlBlock = {
+            type: "If",
+            range: lineRange,
+            parentSub: currentSub?.name,
+            parentBlock: block,
+            variables: [],
+            isSingleLine: false,
+            hasEndToken: false,
+            isElseIf: true
+          };
+          
+          this.symbols.controlBlocks.push(elseIfBlock);
+          activeControlBlocks.push(elseIfBlock);
+          return true;
+        }
+      }
+    }
+
+    // 检查Else语句
+    if (RtBasicParser.REGEX.IF.ELSE.test(text)) {
+      // 查找最近的未结束的If块
+      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+        const block = activeControlBlocks[i];
+        if (block.type === "If" && !block.hasEndToken && !block.isElseIf) {
+          const elseBlock: ControlBlock = {
+            type: "If",
+            range: lineRange,
+            parentSub: currentSub?.name,
+            parentBlock: block,
+            variables: [],
+            isSingleLine: false,
+            hasEndToken: false,
+            isElse: true
+          };
+          
+          this.symbols.controlBlocks.push(elseBlock);
+          activeControlBlocks.push(elseBlock);
+          return true;
+        }
+      }
+    }
+
+    // 检查多行If语句开始
+    if (RtBasicParser.REGEX.IF.START.test(text) && !RtBasicParser.REGEX.IF.SINGLE_LINE.test(text)) {
+      const ifBlock: ControlBlock = {
+        type: "If",
+        range: lineRange,
+        parentSub: currentSub?.name,
+        variables: [],
+        isSingleLine: false,
+        hasEndToken: false
+      };
+      
+      // 如果在其他控制块内，设置父块
+      if (activeControlBlocks.length > 0) {
+        ifBlock.parentBlock = activeControlBlocks[activeControlBlocks.length - 1];
+      }
+      
+      this.symbols.controlBlocks.push(ifBlock);
+      activeControlBlocks.push(ifBlock);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 处理循环语句（For和While）
+   */
+  private handleLoopStatement(
+    text: string,
+    lineRange: vscode.Range,
+    currentSub: RtBasicSub | undefined,
+    activeControlBlocks: ControlBlock[]
+  ): boolean {
+    // 检查For循环开始
+    if (RtBasicParser.REGEX.FOR.START.test(text)) {
+      const forBlock: ControlBlock = {
+        type: "For",
+        range: lineRange,
+        parentSub: currentSub?.name,
+        variables: [],
+        isSingleLine: false,
+        hasEndToken: false
+      };
+      
+      // 如果在其他控制块内，设置父块
+      if (activeControlBlocks.length > 0) {
+        forBlock.parentBlock = activeControlBlocks[activeControlBlocks.length - 1];
+      }
+      
+      this.symbols.controlBlocks.push(forBlock);
+      activeControlBlocks.push(forBlock);
+      return true;
+    }
+
+    // 检查While循环开始
+    if (RtBasicParser.REGEX.WHILE.START.test(text)) {
+      const whileBlock: ControlBlock = {
+        type: "While",
+        range: lineRange,
+        parentSub: currentSub?.name,
+        variables: [],
+        isSingleLine: false,
+        hasEndToken: false
+      };
+      
+      // 如果在其他控制块内，设置父块
+      if (activeControlBlocks.length > 0) {
+        whileBlock.parentBlock = activeControlBlocks[activeControlBlocks.length - 1];
+      }
+      
+      this.symbols.controlBlocks.push(whileBlock);
+      activeControlBlocks.push(whileBlock);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 处理控制块的结束
+   */
+  private handleControlBlockEnd(
+    text: string,
+    lineRange: vscode.Range,
+    activeControlBlocks: ControlBlock[]
+  ): boolean {
+    // 检查End If
+    if (RtBasicParser.REGEX.IF.END.test(text)) {
+      // 从栈顶向下查找最近的未结束的If块
+      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+        const block = activeControlBlocks[i];
+        if (block.type === "If" && !block.hasEndToken && !block.isElseIf && !block.isElse) {
+          // 更新块的范围和结束状态
+          block.range = new vscode.Range(block.range.start, lineRange.end);
+          block.hasEndToken = true;
+          
+          // 同时结束所有相关的ElseIf和Else块
+          for (let j = i + 1; j < activeControlBlocks.length; j++) {
+            const relatedBlock = activeControlBlocks[j];
+            if (relatedBlock.type === "If" &&
+              (relatedBlock.isElseIf || relatedBlock.isElse) &&
+              relatedBlock.parentBlock === block) {
+              relatedBlock.hasEndToken = true;
+              relatedBlock.range = new vscode.Range(
+                relatedBlock.range.start,
+                lineRange.end
+              );
+            }
+          }
+          
+          // 从活动控制块栈中移除已结束的块
+          activeControlBlocks.splice(i);
+          return true;
+        }
+      }
+    }
+
+    // 检查Next（For循环结束）
+    if (RtBasicParser.REGEX.FOR.END.test(text)) {
+      // 从栈顶向下查找最近的未结束的For块
+      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+        const block = activeControlBlocks[i];
+        if (block.type === "For" && !block.hasEndToken) {
+          // 更新块的范围和结束状态
+          block.range = new vscode.Range(block.range.start, lineRange.end);
+          block.hasEndToken = true;
+          
+          // 从活动控制块栈中移除已结束的块
+          activeControlBlocks.splice(i);
+          return true;
+        }
+      }
+    }
+
+    // 检查Wend（While循环结束）
+    if (RtBasicParser.REGEX.WHILE.END.test(text)) {
+      // 从栈顶向下查找最近的未结束的While块
+      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
+        const block = activeControlBlocks[i];
+        if (block.type === "While" && !block.hasEndToken) {
+          // 更新块的范围和结束状态
+          block.range = new vscode.Range(block.range.start, lineRange.end);
+          block.hasEndToken = true;
+          
+          // 从活动控制块栈中移除已结束的块
+          activeControlBlocks.splice(i);
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * 解析变量声明并创建变量对象
    */
   private parseVariableDeclaration(
@@ -542,248 +615,6 @@ export class RtBasicParser {
       parentSub,
       parentBlock
     };
-  }
-
-  /**
-   * 处理控制块的开始
-   */
-  private handleBlockStart(
-    blockType: ControlBlockType,
-    lineRange: vscode.Range,
-    currentSub?: RtBasicSub,
-    currentControlBlock?: ControlBlock,
-    isSingleLine: boolean = false,
-    isElseIf?: boolean,
-    isElse?: boolean
-  ): ControlBlock {
-    const newBlock: ControlBlock = {
-      type: blockType,
-      range: lineRange,
-      parentSub: currentSub?.name,
-      variables: [],
-      isSingleLine,
-      hasEndToken: isSingleLine, // 单行if语句不需要结束标记，所以hasEndToken为true
-      isElseIf,
-      isElse
-    };
-
-    if (currentControlBlock) {
-      newBlock.parentBlock = currentControlBlock;
-    }
-
-    return newBlock;
-  }
-
-  /**
-   * 处理控制块的结束
-   */
-  private handleBlockEnd(
-    block: ControlBlock,
-    lineRange: vscode.Range
-  ): void {
-    // 更新控制块范围
-    block.range = new vscode.Range(block.range.start, new vscode.Position(lineRange.end.line, Number.MAX_SAFE_INTEGER));
-
-    // 收集控制块内的变量
-    if (!block.variables) {
-      block.variables = [];
-    }
-
-    // 查找属于此控制块的所有变量
-    this.symbols.variables.forEach(variable => {
-      // 检查变量是否在此控制块的范围内
-      if (variable.range && block.range.contains(variable.range) && 
-          (!variable.parentBlock || variable.parentBlock === block)) {
-        
-        // 如果变量还没有被添加到任何控制块，或者已经是这个控制块的变量
-        if (!block.variables!.includes(variable)) {
-          block.variables!.push(variable);
-        }
-        
-        // 更新变量的父控制块引用
-        variable.parentBlock = block;
-      }
-    });
-
-    // 将完成的控制块添加到符号表中
-    if (!this.symbols.controlBlocks.includes(block)) {
-      this.symbols.controlBlocks.push(block);
-    }
-  }
-
-  /**
-   * 检查控制块结束类型是否匹配
-   */
-  private isMatchingBlockEnd(endType: ControlBlockType, blockType: ControlBlockType): boolean {
-    const matchingPairs: Record<string, ControlBlockType> = {
-      'If': 'End If',
-      'For': 'Next',
-      'While': 'Wend',
-      'Select': 'End Select'
-    };
-    
-    return matchingPairs[blockType] === endType;
-  }
-
-  /**
-   * 检测控制块的开始
-   */
-  private detectControlBlockStart(text: string): { 
-    blockType: ControlBlockType; 
-    isSingleLine: boolean; 
-    isElseIf?: boolean; 
-    isElse?: boolean;
-  } | undefined {
-    // 检查单行If语句
-    if (RtBasicParser.REGEX.IF.SINGLE_LINE.test(text)) {
-      return { blockType: "If", isSingleLine: true };
-    }
-    
-    // 检查ElseIf语句
-    if (RtBasicParser.REGEX.IF.ELSEIF.test(text)) {
-      const hasThen = text.toLowerCase().includes('then');
-      const thenIndex = hasThen ? text.toLowerCase().indexOf('then') : -1;
-      const afterThen = thenIndex >= 0 ? text.substring(thenIndex + 4).trim() : '';
-      
-      // 单行ElseIf: ElseIf条件Then语句
-      // 多行ElseIf: ElseIf条件Then (后面没有语句或只有注释)
-      const isSingleLine = hasThen && afterThen && 
-                          !afterThen.startsWith("'") && 
-                          !afterThen.toLowerCase().startsWith("rem ");
-      
-      return { 
-        blockType: "If", 
-        isSingleLine: Boolean(isSingleLine), 
-        isElseIf: true 
-      };
-    }
-    
-    // 检查Else语句
-    if (RtBasicParser.REGEX.IF.ELSE.test(text)) {
-      const afterElse = text.substring(4).trim();
-      const isSingleLine = afterElse && 
-                          !afterElse.startsWith("'") && 
-                          !afterElse.toLowerCase().startsWith("rem ");
-      
-      return { 
-        blockType: "If", 
-        isSingleLine: Boolean(isSingleLine), 
-        isElse: true 
-      };
-    }
-    
-    // 检查复杂If语句
-    if (RtBasicParser.REGEX.IF.START.test(text)) {
-      const thenIndex = text.toLowerCase().indexOf('then');
-      const afterThen = thenIndex >= 0 ? text.substring(thenIndex + 4).trim() : '';
-      const isSingleLine = afterThen && 
-                          !afterThen.startsWith("'") && 
-                          !afterThen.toLowerCase().startsWith("rem ");
-      
-      return { blockType: "If", isSingleLine: Boolean(isSingleLine) };
-    }
-    
-    // 使用预定义的映射表简化其他控制块类型检查
-    const match = RtBasicParser.BLOCK_TYPE_MAP.find(({ regex }) => regex.test(text));
-    return match ? { blockType: match.type, isSingleLine: false } : undefined;
-  }
-
-  /**
-   * 检测控制块的结束
-   */
-  private detectControlBlockEnd(text: string, activeControlBlocks: ControlBlock[]): 
-    { matchingBlock: ControlBlock; matchingIndex: number } | undefined {
-    
-    if (activeControlBlocks.length === 0) {
-      return undefined;
-    }
-
-    // 检查是否是ElseIf或Else语句
-    if (RtBasicParser.REGEX.IF.ELSEIF.test(text) || RtBasicParser.REGEX.IF.ELSE.test(text)) {
-      const isElseIf = RtBasicParser.REGEX.IF.ELSEIF.test(text);
-      
-      // 从栈顶向下查找最近的非单行If块
-      for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
-        const block = activeControlBlocks[i];
-        if (block.type === "If" && !block.isSingleLine) {
-          // 检查ElseIf/Else的格式
-          const hasThen = isElseIf && text.toLowerCase().includes('then');
-          const thenIndex = hasThen ? text.toLowerCase().indexOf('then') : -1;
-          const afterThen = thenIndex >= 0 ? text.substring(thenIndex + 4).trim() : '';
-          const afterElse = !isElseIf ? text.substring(4).trim() : '';
-          
-          // 判断是否是单行形式
-          const isSingleLine = isElseIf ? 
-            (hasThen && afterThen && !afterThen.startsWith("'") && !afterThen.toLowerCase().startsWith("rem ")) :
-            (afterElse && !afterElse.startsWith("'") && !afterElse.toLowerCase().startsWith("rem "));
-          
-          // 更新块的范围
-          if (!isSingleLine) {
-            block.range = new vscode.Range(
-              block.range.start,
-              new vscode.Position(block.range.end.line + 1, 0)
-            );
-          }
-          
-          // 标记为未结束，因为还需要等待End If
-          block.hasEndToken = false;
-          break;
-        }
-      }
-      return undefined; // ElseIf/Else不是控制块结束标记
-    }
-
-    // 使用预定义的END_TOKEN_MAP检查所有可能的结束标记
-    for (const { regex, startType } of RtBasicParser.END_TOKEN_MAP) {
-      if (regex.test(text)) {
-        // 从栈顶向下查找匹配的块
-        for (let i = activeControlBlocks.length - 1; i >= 0; i--) {
-          const block = activeControlBlocks[i];
-          
-          // 跳过单行语句，它们不需要结束标记
-          if (block.isSingleLine) {
-            continue;
-          }
-          
-          // 检查类型是否匹配
-          if (block.type === startType) {
-            // 标记已找到结束标记
-            block.hasEndToken = true;
-            
-            // 特殊处理End If语句
-            if (startType === "If" && regex === RtBasicParser.REGEX.IF.END) {
-              // 查找所有相关的ElseIf和Else块
-              let lastRelatedBlock = block;
-              for (let j = i + 1; j < activeControlBlocks.length; j++) {
-                const relatedBlock = activeControlBlocks[j];
-                if (relatedBlock.type === "If" && 
-                    (relatedBlock.parentBlock === block.parentBlock || 
-                     relatedBlock.parentBlock === block)) {
-                  // 标记相关块已找到结束标记
-                  relatedBlock.hasEndToken = true;
-                  // 更新相关块的范围
-                  relatedBlock.range = new vscode.Range(
-                    relatedBlock.range.start,
-                    new vscode.Position(block.range.end.line, text.length)
-                  );
-                  lastRelatedBlock = relatedBlock;
-                }
-              }
-              
-              // 更新主If块的范围以包含所有相关块
-              block.range = new vscode.Range(
-                block.range.start,
-                lastRelatedBlock.range.end
-              );
-            }
-            
-            return { matchingBlock: block, matchingIndex: i };
-          }
-        }
-      }
-    }
-
-    return undefined;
   }
 
   /**
@@ -852,6 +683,9 @@ export class RtBasicParser {
     return undefined;
   }
 
+  /**
+   * 解析函数参数
+   */
   private parseParameters(paramsText: string): RtBasicParameter[] {
     if (!paramsText.trim()) {
       return [];
@@ -876,6 +710,9 @@ export class RtBasicParser {
     });
   }
 
+  /**
+   * 获取指定位置的符号信息
+   */
   public getSymbolAtPosition(
     document: vscode.TextDocument,
     position: vscode.Position
@@ -910,38 +747,13 @@ export class RtBasicParser {
     }
 
     // 检查结构体
-    const struct = this.symbols.structures.find((s) => s.name === word);
-    if (struct) {
+    const structure = this.symbols.structures.find((s) => s.name === word);
+    if (structure) {
       return new vscode.SymbolInformation(
-        struct.name,
+        structure.name,
         vscode.SymbolKind.Struct,
-        "global",
-        new vscode.Location(document.uri, struct.range)
-      );
-    }
-
-    // 检查控制块
-    // 注意：这里我们不是通过名称查找控制块，而是检查位置是否在控制块范围内
-    const controlBlock = this.symbols.controlBlocks.find(
-      (block) => block.range.contains(position)
-    );
-    if (controlBlock) {
-      return new vscode.SymbolInformation(
-        `${controlBlock.type} block`,
-        vscode.SymbolKind.Module,
-        controlBlock.parentSub || "file",
-        new vscode.Location(document.uri, controlBlock.range)
-      );
-    }
-
-    // 检查C函数导入
-    const cFunction = this.symbols.cFunctions.find((cf) => cf.name === word);
-    if (cFunction) {
-      return new vscode.SymbolInformation(
-        cFunction.name,
-        vscode.SymbolKind.Function,
-        "C Function Import",
-        new vscode.Location(document.uri, cFunction.range)
+        structure.isGlobal ? "global" : "file",
+        new vscode.Location(document.uri, structure.range)
       );
     }
 

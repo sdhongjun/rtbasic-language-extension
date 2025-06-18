@@ -212,7 +212,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             }
             
             if (sub.parameters.length > 0) {
-                content.appendText('\n\n**Parameters:**\n');
+                content.appendMarkdown('\n\n**Parameters:**\n');
                 sub.parameters.forEach(param => {
                     let paramDesc = `- \`${param.name}\``;
                     if (param.type) {
@@ -221,7 +221,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     if (param.isArray) {
                         paramDesc += ` (array size: ${param.arraySize})`;
                     }
-                    content.appendText(paramDesc + '\n');
+                    content.appendMarkdown(paramDesc + '\n');
                 });
             }
             
@@ -257,9 +257,9 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             if (paramsMatch && paramsMatch[1].trim()) {
                 const params = this.parseCFunctionParameters(paramsMatch[1].trim());
                 if (params.length > 0) {
-                    content.appendText('\n\n**Parameters:**\n');
+                    content.appendMarkdown('\n\n**Parameters:**\n');
                     params.forEach(param => {
-                        content.appendText(`- \`${param}\`\n`);
+                        content.appendMarkdown(`- \`${param}\`\n`);
                     });
                 }
             }
@@ -269,7 +269,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             if (returnTypeMatch) {
                 const returnType = returnTypeMatch[1].trim();
                 if (returnType !== 'void') {
-                    content.appendText(`\n**Returns:** \`${returnType}\`\n`);
+                    content.appendMarkdown(`\n**Returns:** \`${returnType}\`\n`);
                 }
             }
             
@@ -320,7 +320,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             }
             
             if (struct.members.length > 0) {
-                content.appendText('\n\n**Members:**\n');
+                content.appendMarkdown('\n\n**Members:**\n');
                 struct.members.forEach(member => {
                     let memberDesc = `- \`${member.name}\``;
                     if (member.type) {
@@ -329,7 +329,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     if (member.isArray) {
                         memberDesc += ` (array size: ${member.arraySize})`;
                     }
-                    content.appendText(memberDesc + '\n');
+                    content.appendMarkdown(memberDesc + '\n');
                 });
             }
             
