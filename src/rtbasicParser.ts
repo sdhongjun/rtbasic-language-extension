@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 export interface RtBasicVariable {
   name: string;
   range: vscode.Range;
-  scope: "global" | "local" | "file" | "block";
+  scope: "global" | "local" | "file" | "block" | "parameter";
   isArray?: boolean;
   arraySize?: number;
   structType?: string;

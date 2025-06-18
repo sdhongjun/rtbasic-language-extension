@@ -112,7 +112,27 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             );
         }
 
-        // 2. 如果没有找到，检查函数作用域的局部变量
+        // 2. 如果没有找到，检查函数参数
+        if (!variable && context.subName) {
+            const currentSub = currentFileSymbols.subs.find(s => s.name === context.subName);
+            if (currentSub) {
+                const param = currentSub.parameters.find(p => p.name === word);
+                if (param) {
+                    // 创建一个临时变量对象来表示函数参数
+                    variable = {
+                        name: param.name,
+                        scope: 'parameter', // 使用特殊的scope值来标识参数
+                        parentSub: context.subName,
+                        type: param.type,
+                        isArray: param.isArray,
+                        arraySize: param.arraySize,
+                        range: currentSub.range, // 使用函数的range作为参数的定义位置
+                    };
+                }
+            }
+        }
+
+        // 3. 如果没有找到，检查函数作用域的局部变量
         if (!variable && context.subName) {
             variable = currentFileSymbols.variables.find(v => 
                 v.name === word && 
@@ -149,6 +169,28 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             let sourceFile = variable.sourceFile || document.uri.fsPath;
             
             switch (variable.scope) {
+                case 'parameter':
+                    // 处理函数参数
+                    varCode = `${variable.name}`;
+                    if (variable.isArray) {
+                        varCode += `(${variable.arraySize || ''})`;
+                    }
+                    if (variable.type) {
+                        varCode += ` As ${variable.type}`;
+                    } else if (variable.structType) {
+                        varCode += ` As ${variable.structType}`;
+                    }
+                    content.appendCodeblock(varCode, 'rtbasic');
+                    
+                    // 添加参数信息
+                    let paramInfo = `Parameter of sub ${variable.parentSub}`;
+                    content.appendText(`\n\n${paramInfo}`);
+                    
+                    // 如果是数组参数，显示数组信息
+                    if (variable.isArray) {
+                        content.appendText(`\nArray parameter${variable.arraySize ? ` with size ${variable.arraySize}` : ''}`);
+                    }
+                    break;
                 case 'global':
                     varCode = `Global Dim ${variable.name}`;
                     if (variable.isArray) {

@@ -68,8 +68,18 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             }
         }
         
-        // 如果在控制块中没有找到，则查找函数级别的局部变量
+        // 如果在控制块中没有找到，则查找函数参数
         if (currentSub) {
+            const sub = currentFileSymbols.subs.find(s => s.name === currentSub.name);
+            if (sub) {
+                const param = sub.parameters.find(p => p.name === word);
+                if (param) {
+                    // 返回函数定义位置作为参数的定义位置
+                    return new vscode.Location(document.uri, sub.range);
+                }
+            }
+            
+            // 查找函数级别的局部变量
             const localVariable = currentFileSymbols.variables.find(v => 
                 v.name === word && 
                 v.scope === 'local' && 
