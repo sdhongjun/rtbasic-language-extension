@@ -29,8 +29,10 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         
         // 首先在当前文件中查找局部符号
         
-        // 检查局部变量
-        const localVariable = currentFileSymbols.variables.find(v => v.name === word && v.scope === 'local');
+        // 检查局部变量和块作用域变量
+        const localVariable = currentFileSymbols.variables.find(v => 
+            v.name === word && (v.scope === 'local' || v.scope === 'block')
+        );
         if (localVariable) {
             return new vscode.Location(document.uri, localVariable.range);
         }

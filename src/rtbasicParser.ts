@@ -10,7 +10,10 @@ export interface RtBasicVariable {
   type?: string;
   parentSub?: string;
   parentBlock?: ControlBlock;
+  blockType?: string; // 添加blockType属性，用于存储变量所属的控制块类型
   sourceFile?: string;
+  isConst?: boolean; // 标记是否为常量
+  value?: string; // 存储常量的值
 }
 
 // 控制语句块类型
@@ -35,6 +38,7 @@ export interface RtBasicSub {
   isGlobal: boolean;
   returnType?: string;
   sourceFile?: string;
+  description?: string; // 添加函数描述属性
 }
 
 export interface RtBasicParameter {
@@ -43,6 +47,7 @@ export interface RtBasicParameter {
   arraySize?: number;
   type?: string;
   description?: string;
+  direction?: "in" | "out" | "inout"; // 添加参数方向属性
 }
 
 export interface RtBasicStructure {
@@ -103,11 +108,19 @@ export class RtBasicParser {
     
     // 变量声明相关
     VARIABLE: {
-      GLOBAL_DIM: /global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
-      DIM: /dim\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i,
-      LOCAL: /local\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\d+\))?(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?)*)/i,
-      DEFINITION: /([a-zA-Z_][a-zA-Z0-9_]*)(?:\s*\((\d+)\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
-      ARRAY: /(\w+)\s*\((\d+)\)/
+      // 匹配变量声明的开始部分
+      GLOBAL_DIM: /^global\s+(?:dim\s+)?(.+)$/i,
+      GLOBAL_CONST: /global\s+const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
+      DIM: /^dim\s+(.+)$/i,
+      LOCAL: /^local\s+(.+)$/i,
+      CONST: /const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
+      
+      // 匹配单个变量声明（包括可选的数组大小和类型）
+      VARIABLE_DECLARATION: /([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((\d+)\))?\s*(?:as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
+      
+      // 辅助正则表达式
+      ARRAY: /(\w+)\s*\((\d+)\)/,
+      TYPE: /as\s+([a-zA-Z_][a-zA-Z0-9_]*)/i
     }
   };
   
@@ -195,42 +208,21 @@ export class RtBasicParser {
         continue;
       }
 
-      // 检查变量声明
-      if ((text.toLowerCase().startsWith("global dim") || 
-           (text.toLowerCase().startsWith("dim") && !currentStructure) || 
-           text.toLowerCase().startsWith("local")) && 
-          (!text.toLowerCase().startsWith("local") || (currentSub || currentControlBlock))) {
-        
-        // 处理变量声明
-        const variableInfo = this.detectVariableDeclaration(text, lineRange, currentSub, currentControlBlock);
-        if (variableInfo) {
-          const { variable } = variableInfo;
-          
-          // 将变量添加到符号表
-          this.symbols.variables.push(variable);
-          
-          // 如果变量在控制块内，将其添加到控制块的变量列表中
-          if (currentControlBlock) {
-            if (!currentControlBlock.variables) {
-              currentControlBlock.variables = [];
-            }
-            currentControlBlock.variables.push(variable);
-          }
-          
-          continue;
-        }
-      }
-
       // 解析全局Sub
-      else if (text.toLowerCase().startsWith("global sub")) {
-        const match = text.match(/global\s+sub\s+(\w+)\s*\((.*)\)/i);
+      if (text.toLowerCase().startsWith("global sub")) {
+        const match = text.match(/global\s+sub\s+(\w+)\s*\((.*)\)(?:\s+as\s+(\w+))?/i);
         if (match) {
+          // 提取函数的文档注释
+          const { comments, description } = this.extractDocComments(document, i);
+          
           const sub: RtBasicSub = {
             name: match[1],
-            parameters: this.parseParameters(match[2]),
+            parameters: this.parseParameters(match[2], comments),
             range: new vscode.Range(line.range.start, line.range.end),
             isGlobal: true,
-            sourceFile: document.uri.fsPath
+            returnType: match[3], // 捕获返回类型
+            sourceFile: document.uri.fsPath,
+            description: description
           };
           this.symbols.subs.push(sub);
           currentSub = sub;
@@ -239,14 +231,19 @@ export class RtBasicParser {
 
       // 解析普通Sub
       else if (text.toLowerCase().startsWith("sub")) {
-        const match = text.match(/sub\s+(\w+)\s*\((.*)\)/i);
+        const match = text.match(/sub\s+(\w+)\s*\((.*)\)(?:\s+as\s+(\w+))?/i);
         if (match) {
+          // 提取函数的文档注释
+          const { comments, description } = this.extractDocComments(document, i);
+          
           const sub: RtBasicSub = {
             name: match[1],
-            parameters: this.parseParameters(match[2]),
+            parameters: this.parseParameters(match[2], comments),
             range: new vscode.Range(line.range.start, line.range.end),
             isGlobal: false,
-            sourceFile: document.uri.fsPath
+            returnType: match[3], // 捕获返回类型
+            sourceFile: document.uri.fsPath,
+            description: description
           };
           this.symbols.subs.push(sub);
           currentSub = sub;
@@ -345,6 +342,32 @@ export class RtBasicParser {
         activeControlBlocks = [];
         currentControlBlock = undefined;
         currentSub = undefined;
+      }
+
+      // 检查变量声明
+      else if ((text.toLowerCase().startsWith("global") ||
+           (text.toLowerCase().startsWith("dim") && !currentStructure) || 
+           text.toLowerCase().startsWith("local")) && 
+          (!text.toLowerCase().startsWith("local") || (currentSub || currentControlBlock))) {
+        
+        // 处理变量声明
+        const variableInfo = this.detectVariableDeclaration(text, lineRange, currentSub, currentControlBlock);
+        if (variableInfo) {
+          const { variable } = variableInfo;
+          
+          // 将变量添加到符号表
+          this.symbols.variables.push(variable);
+          
+          // 如果变量在控制块内，将其添加到控制块的变量列表中
+          if (currentControlBlock) {
+            if (!currentControlBlock.variables) {
+              currentControlBlock.variables = [];
+            }
+            currentControlBlock.variables.push(variable);
+          }
+          
+          continue;
+        }
       }
     }
 
@@ -585,16 +608,85 @@ export class RtBasicParser {
 
   /**
    * 解析变量声明并创建变量对象
+   * @param varDecl 变量声明信息，可以是字符串或包含名称、数组大小和类型的对象
+   * @param range 变量声明的范围
+   * @param scope 变量作用域
+   * @param structType 变量类型
+   * @param parentSub 父函数名称
+   * @param parentBlock 父控制块
+   * @returns 变量对象
    */
+  private inferTypeFromValue(value: string): string {
+    // 移除首尾空格
+    value = value.trim();
+
+    // 检查是否为字符串（以双引号或单引号包围）
+    if ((value.startsWith('"') && value.endsWith('"')) || 
+        (value.startsWith("'") && value.endsWith("'"))) {
+      return "String";
+    }
+
+    // 检查是否为布尔值
+    if (value.toLowerCase() === "true" || value.toLowerCase() === "false") {
+      return "Boolean";
+    }
+
+    // 检查是否为浮点数
+    if (value.includes('.') || value.toLowerCase().includes('e')) {
+      return "Double";
+    }
+
+    // 检查是否为整数
+    if (/^-?\d+$/.test(value)) {
+      // 检查数值范围，决定使用Integer还是Long
+      const num = parseInt(value);
+      if (num >= -32768 && num <= 32767) {
+        return "Integer";
+      } else {
+        return "Long";
+      }
+    }
+
+    // 十六进制整数
+    if (/\$\d+$/.test(value)) {
+      const num = parseInt(value.substring(1), 16);
+      if (num >= -32768 && num <= 32767) {
+        return "Integer";
+      } else {
+        return "Long";
+      }
+    }
+
+    // 默认返回Variant类型
+    return "Variant";
+  }
+
   private parseVariableDeclaration(
-    varName: string,
+    varDecl: string | { name: string; arraySize?: number; type?: string },
     range: vscode.Range,
     scope: "global" | "local" | "file" | "block",
     structType?: string,
     parentSub?: string,
     parentBlock?: ControlBlock
   ): RtBasicVariable {
-    const arrayMatch = varName.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
+    const blockType = parentBlock ? parentBlock.type : undefined;
+    
+    // 如果传入的是对象，直接使用其属性
+    if (typeof varDecl === 'object') {
+      return {
+        name: varDecl.name,
+        range,
+        scope,
+        ...(varDecl.arraySize && { isArray: true, arraySize: varDecl.arraySize }),
+        structType: varDecl.type || structType,
+        parentSub,
+        parentBlock,
+        blockType: blockType ? String(blockType) : undefined
+      };
+    }
+    
+    // 如果传入的是字符串，检查是否为数组变量
+    const arrayMatch = varDecl.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
     if (arrayMatch) {
       return {
         name: arrayMatch[1],
@@ -604,21 +696,26 @@ export class RtBasicParser {
         arraySize: parseInt(arrayMatch[2]),
         structType,
         parentSub,
-        parentBlock
+        parentBlock,
+        blockType: blockType ? String(blockType) : undefined
       };
     }
+    
+    // 普通变量
     return {
-      name: varName,
+      name: varDecl,
       range,
       scope,
       structType,
       parentSub,
-      parentBlock
+      parentBlock,
+      blockType: blockType ? String(blockType) : undefined
     };
   }
 
   /**
    * 检测变量声明并创建变量对象
+   * 支持单行多个变量定义，如：dim a, b, c as Integer
    */
   private detectVariableDeclaration(
     text: string,
@@ -628,19 +725,74 @@ export class RtBasicParser {
   ): { variable: RtBasicVariable; scope: "global" | "local" | "file" | "block" } | undefined {
     // 检查全局变量声明
     if (text.toLowerCase().startsWith("global")) {
-      const globalMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_DIM);
-      if (globalMatch) {
-        const varName = globalMatch[1].trim();
-        const structType = globalMatch[2];
+      const globalConstMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_CONST);
+      if (globalConstMatch) {
+        const varName = globalConstMatch[1].trim();
+        const value = globalConstMatch[2].trim();
+        const type = globalConstMatch[3]?.trim();
+
         const variable = this.parseVariableDeclaration(
           varName,
           lineRange,
           "global",
-          structType,
+          type,
           undefined,
           currentControlBlock
         );
+
+        // 添加常量特定属性
+        variable.isConst = true;
+        variable.value = value;
+        variable.type = type || this.inferTypeFromValue(value);
+
         return { variable, scope: "global" };
+      }
+
+      const globalDimMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_DIM);
+      if (globalDimMatch) {
+        const varDeclaration = globalDimMatch[1].trim();
+        
+        // 提取变量声明中的所有变量
+        const varDeclarations = this.extractVariableDeclarations(varDeclaration);
+        
+        if (varDeclarations.length > 0) {
+          // 处理第一个变量（保持原有行为，只返回第一个变量）
+          const firstVar = varDeclarations[0];
+          const variable = this.parseVariableDeclaration(
+            firstVar,
+            lineRange,
+            "global",
+            undefined,
+            undefined,
+            currentControlBlock
+          );
+          
+          // 如果有多个变量，将其他变量添加到符号表中
+          if (varDeclarations.length > 1) {
+            for (let i = 1; i < varDeclarations.length; i++) {
+              const varInfo = varDeclarations[i];
+              const additionalVar = this.parseVariableDeclaration(
+                varInfo,
+                lineRange,
+                "global",
+                undefined,
+                undefined,
+                currentControlBlock
+              );
+              this.symbols.variables.push(additionalVar);
+              
+              // 如果变量在控制块内，将其添加到控制块的变量列表中
+              if (currentControlBlock) {
+                if (!currentControlBlock.variables) {
+                  currentControlBlock.variables = [];
+                }
+                currentControlBlock.variables.push(additionalVar);
+              }
+            }
+          }
+          
+          return { variable, scope: "global" };
+        }
       }
     }
     
@@ -648,35 +800,126 @@ export class RtBasicParser {
     else if (text.toLowerCase().startsWith("dim")) {
       const dimMatch = text.match(RtBasicParser.REGEX.VARIABLE.DIM);
       if (dimMatch) {
-        const varName = dimMatch[1].trim();
-        const structType = dimMatch[2];
-        const variable = this.parseVariableDeclaration(
-          varName,
-          lineRange,
-          "file",
-          structType,
-          undefined,
-          currentControlBlock
-        );
-        return { variable, scope: "file" };
+        const varDeclaration = dimMatch[1].trim();
+        
+        // 提取变量声明中的所有变量
+        const varDeclarations = this.extractVariableDeclarations(varDeclaration);
+        
+        if (varDeclarations.length > 0) {
+          // 处理第一个变量（保持原有行为，只返回第一个变量）
+          const firstVar = varDeclarations[0];
+          const variable = this.parseVariableDeclaration(
+            firstVar,
+            lineRange,
+            "file",
+            undefined,
+            undefined,
+            currentControlBlock
+          );
+          
+          // 如果有多个变量，将其他变量添加到符号表中
+          if (varDeclarations.length > 1) {
+            for (let i = 1; i < varDeclarations.length; i++) {
+              const varInfo = varDeclarations[i];
+              const additionalVar = this.parseVariableDeclaration(
+                varInfo,
+                lineRange,
+                "file",
+                undefined,
+                undefined,
+                currentControlBlock
+              );
+              this.symbols.variables.push(additionalVar);
+              
+              // 如果变量在控制块内，将其添加到控制块的变量列表中
+              if (currentControlBlock) {
+                if (!currentControlBlock.variables) {
+                  currentControlBlock.variables = [];
+                }
+                currentControlBlock.variables.push(additionalVar);
+              }
+            }
+          }
+          
+          return { variable, scope: "file" };
+        }
       }
     }
     
+    // 检查常量声明
+    else if (text.toLowerCase().startsWith("const") && currentControlBlock) {
+      const constMatch = text.match(RtBasicParser.REGEX.VARIABLE.CONST);
+      if (constMatch) {
+        const varName = constMatch[1].trim();
+        const value = constMatch[2].trim();
+        const type = constMatch[3]?.trim();
+
+        const variable = this.parseVariableDeclaration(
+          varName,
+          lineRange,
+          "block",
+          type,
+          currentSub?.name,
+          currentControlBlock
+        );
+
+        // 添加常量特定属性
+        variable.isConst = true;
+        variable.value = value;
+        variable.type = type || this.inferTypeFromValue(value);
+
+        return { variable, scope: "block" };
+      }
+    }
     // 检查局部变量声明
     else if (text.toLowerCase().startsWith("local")) {
       const localMatch = text.match(RtBasicParser.REGEX.VARIABLE.LOCAL);
       if (localMatch && (currentSub || currentControlBlock)) {
-        const varName = localMatch[1].trim();
-        const scope = currentControlBlock ? "block" : "local";
-        const variable = this.parseVariableDeclaration(
-          varName,
-          lineRange,
-          scope,
-          undefined,
-          currentSub?.name,
-          currentControlBlock
-        );
-        return { variable, scope };
+        const varDeclaration = localMatch[1].trim();
+        
+        // 提取变量声明中的所有变量
+        const varDeclarations = this.extractVariableDeclarations(varDeclaration);
+        
+        if (varDeclarations.length > 0) {
+          const scope = currentControlBlock ? "block" : "local";
+          
+          // 处理第一个变量（保持原有行为，只返回第一个变量）
+          const firstVar = varDeclarations[0];
+          const variable = this.parseVariableDeclaration(
+            firstVar,
+            lineRange,
+            scope,
+            undefined,
+            currentSub?.name,
+            currentControlBlock
+          );
+          
+          // 如果有多个变量，将其他变量添加到符号表中
+          if (varDeclarations.length > 1) {
+            for (let i = 1; i < varDeclarations.length; i++) {
+              const varInfo = varDeclarations[i];
+              const additionalVar = this.parseVariableDeclaration(
+                varInfo,
+                lineRange,
+                scope,
+                undefined,
+                currentSub?.name,
+                currentControlBlock
+              );
+              this.symbols.variables.push(additionalVar);
+              
+              // 如果变量在控制块内，将其添加到控制块的变量列表中
+              if (currentControlBlock) {
+                if (!currentControlBlock.variables) {
+                  currentControlBlock.variables = [];
+                }
+                currentControlBlock.variables.push(additionalVar);
+              }
+            }
+          }
+          
+          return { variable, scope };
+        }
       }
     }
     
@@ -684,30 +927,185 @@ export class RtBasicParser {
   }
 
   /**
+   * 从变量声明字符串中提取所有变量信息
+   * 支持如下格式：
+   * - 单个变量: varName
+   * - 带类型的变量: varName as Type
+   * - 数组变量: varName(10)
+   * - 带类型的数组变量: varName(10) as Type
+   * - 多个变量: varName1, varName2, varName3 as Type
+   */
+  /**
+   * 从变量声明字符串中提取所有变量信息
+   * @param declarationStr 变量声明字符串，不包含开头的 global/dim/local 关键字
+   * @returns 变量声明数组，每个元素包含变量名、数组大小（可选）和类型（可选）
+   */
+  private extractVariableDeclarations(declarationStr: string): Array<{
+    name: string;
+    arraySize?: number;
+    type?: string;
+  }> {
+    const result: Array<{
+      name: string;
+      arraySize?: number;
+      type?: string;
+    }> = [];
+
+    // 移除可能的行尾注释
+    const strWithoutComment = declarationStr.replace(/('|rem\s).*$/i, '').trim();
+    
+    // 分割多个变量声明
+    const declarations = strWithoutComment.split(',').map(decl => decl.trim());
+    
+    for (const declaration of declarations) {
+      // 使用 VARIABLE_DECLARATION 正则表达式匹配单个变量声明
+      const match = declaration.match(RtBasicParser.REGEX.VARIABLE.VARIABLE_DECLARATION);
+      
+      if (match) {
+        const [, name, arraySize, type] = match;
+        
+        result.push({
+          name: name.trim(),
+          ...(arraySize && { arraySize: parseInt(arraySize, 10) }),
+          ...(type && { type: type.trim() })
+        });
+      }
+    }
+    
+    return result;
+  }
+
+  /**
    * 解析函数参数
    */
-  private parseParameters(paramsText: string): RtBasicParameter[] {
+  private parseParameters(paramsText: string, docComments?: string[]): RtBasicParameter[] {
     if (!paramsText.trim()) {
       return [];
     }
 
+    // 解析参数注释
+    const paramDescriptions: Record<string, string> = {};
+    const paramDirections: Record<string, "in" | "out" | "inout"> = {};
+    
+    if (docComments && docComments.length > 0) {
+      docComments.forEach(comment => {
+        // 匹配 @param paramName Description 格式的注释
+        const paramMatch = comment.match(/@param\s+(\w+)\s+(.*)/i);
+        if (paramMatch) {
+          const paramName = paramMatch[1];
+          let description = paramMatch[2].trim();
+          
+          // 检查描述中是否包含方向信息 [in], [out], [inout]
+          const directionMatch = description.match(/\[(in|out|inout)\]/i);
+          if (directionMatch) {
+            const direction = directionMatch[1].toLowerCase() as "in" | "out" | "inout";
+            paramDirections[paramName] = direction;
+            // 从描述中移除方向标记
+            description = description.replace(/\[(in|out|inout)\]\s*/i, '').trim();
+          }
+          
+          paramDescriptions[paramName] = description;
+        }
+      });
+    }
+
     return paramsText.split(",").map((param) => {
       param = param.trim();
-      const arrayMatch = param.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
       
+      // 解析参数方向
+      let direction: "in" | "out" | "inout" | undefined;
+      if (param.toLowerCase().includes("byval")) {
+        direction = "in";
+        param = param.replace(/byval\s+/i, "");
+      } else if (param.toLowerCase().includes("byref")) {
+        direction = "inout";
+        param = param.replace(/byref\s+/i, "");
+      }
+      
+      // 解析参数类型
+      let type: string | undefined;
+      const asMatch = param.match(/\s+as\s+(\w+)/i);
+      if (asMatch) {
+        type = asMatch[1];
+        param = param.replace(/\s+as\s+\w+/i, "");
+      }
+      
+      // 解析参数名称
+      let paramName: string;
+      // 解析数组参数
+      const arrayMatch = param.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
       if (arrayMatch) {
+        paramName = arrayMatch[1];
+        // 如果注释中指定了方向，优先使用注释中的方向
+        const paramDirection = paramDirections[paramName] || direction;
         return {
-          name: arrayMatch[1],
+          name: paramName,
           isArray: true,
           arraySize: parseInt(arrayMatch[2]),
+          type,
+          direction: paramDirection,
+          description: paramDescriptions[paramName]
         };
       }
 
+      // 解析普通参数
       const match = param.match(/(\w+)/i);
+      paramName = match ? match[1] : param;
+      // 如果注释中指定了方向，优先使用注释中的方向
+      const paramDirection = paramDirections[paramName] || direction;
       return {
-        name: match ? match[1] : param,
+        name: paramName,
+        type,
+        direction: paramDirection,
+        description: paramDescriptions[paramName]
       };
     });
+  }
+
+  /**
+   * 提取函数的文档注释
+   * @param document 文档对象
+   * @param lineIndex 函数定义所在行的索引
+   * @returns 包含注释数组和函数描述的对象
+   */
+  private extractDocComments(document: vscode.TextDocument, lineIndex: number): { comments: string[], description: string } {
+    const comments: string[] = [];
+    let description = '';
+    let isDescriptionSection = true; // 默认先收集描述，直到遇到@标签
+    
+    // 向上查找注释行
+    for (let i = lineIndex - 1; i >= 0; i--) {
+      const line = document.lineAt(i).text.trim();
+      
+      // 如果不是注释行，则停止查找
+      if (!line.startsWith("'") && !line.startsWith("REM ")) {
+        break;
+      }
+      
+      // 提取注释内容
+      let commentText = line;
+      if (line.startsWith("'")) {
+        commentText = line.substring(1).trim();
+      } else if (line.startsWith("REM ")) {
+        commentText = line.substring(4).trim();
+      }
+      
+      // 检查是否是标签注释（如@param, @return等）
+      if (commentText.match(/@\w+/)) {
+        isDescriptionSection = false; // 遇到标签后，不再收集描述
+      } else if (isDescriptionSection && commentText) {
+        // 如果是描述部分且不为空，添加到描述中
+        if (description) {
+          description = commentText + '\n' + description; // 保持原始顺序
+        } else {
+          description = commentText;
+        }
+      }
+      
+      comments.unshift(commentText); // 按原始顺序添加所有注释
+    }
+    
+    return { comments, description };
   }
 
   /**

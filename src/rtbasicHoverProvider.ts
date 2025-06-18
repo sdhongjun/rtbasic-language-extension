@@ -87,12 +87,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         // 检查变量
-        // 首先检查当前文件中的局部变量和文件变量
+        // 首先检查当前文件中的局部变量、块作用域变量和文件变量
         let variable = currentFileSymbols.variables.find(v => 
-            v.name === word && (v.scope === 'local' || v.scope === 'file')
+            v.name === word && (v.scope === 'local' || v.scope === 'file' || v.scope === 'block')
         );
         
-        // 如果没有找到局部变量或文件变量，则检查全局变量
+        // 如果没有找到局部变量、块作用域变量或文件变量，则检查全局变量
         if (!variable) {
             // 先检查当前文件中的全局变量
             variable = currentFileSymbols.variables.find(v => 
@@ -143,6 +143,35 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     content.appendCodeblock(varCode, 'rtbasic');
                     if (variable.parentSub) {
                         content.appendText(`\n\nLocal variable in sub ${variable.parentSub}`);
+                    }
+                    break;
+                case 'block':
+                    varCode = `Local ${variable.name}`;
+                    if (variable.isArray) {
+                        varCode += `(${variable.arraySize})`;
+                    }
+                    if (variable.type) {
+                        varCode += ` As ${variable.type}`;
+                    } else if (variable.structType) {
+                        varCode += ` As ${variable.structType}`;
+                    }
+                    content.appendCodeblock(varCode, 'rtbasic');
+                    
+                    let scopeInfo = '';
+                    if (variable.parentSub) {
+                        scopeInfo += `sub ${variable.parentSub}`;
+                    }
+                    if (variable.blockType) {
+                        if (scopeInfo) {
+                            scopeInfo += ', ';
+                        }
+                        scopeInfo += `${variable.blockType} block`;
+                    }
+                    
+                    if (scopeInfo) {
+                        content.appendText(`\n\nBlock-scoped variable in ${scopeInfo}`);
+                    } else {
+                        content.appendText(`\n\nBlock-scoped variable`);
                     }
                     break;
                 case 'file':
@@ -211,18 +240,43 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                 content.appendText(`\n\nDefined in ${this.getRelativePath(sourceFile)}`);
             }
             
+            // 添加函数描述（如果有）
+            if (sub.description) {
+                content.appendMarkdown(`\n\n${sub.description}\n`);
+            }
+            
             if (sub.parameters.length > 0) {
                 content.appendMarkdown('\n\n**Parameters:**\n');
                 sub.parameters.forEach(param => {
                     let paramDesc = `- \`${param.name}\``;
+                    
+                    // 添加类型信息
                     if (param.type) {
-                        paramDesc += ` (${param.type})`;
+                        paramDesc += ` : \`${param.type}\``;
                     }
+                    
+                    // 添加数组信息
                     if (param.isArray) {
-                        paramDesc += ` (array size: ${param.arraySize})`;
+                        paramDesc += ` (Array[${param.arraySize || ''}])`;
                     }
+                    
+                    // 添加参数方向信息（如果有）
+                    if (param.direction) {
+                        paramDesc += ` - ${param.direction}`;
+                    }
+                    
+                    // 添加参数描述（如果有）
+                    if (param.description) {
+                        paramDesc += `\n  ${param.description}`;
+                    }
+                    
                     content.appendMarkdown(paramDesc + '\n');
                 });
+            }
+            
+            // 添加返回值信息（如果有）
+            if (sub.returnType) {
+                content.appendMarkdown(`\n**Returns:** \`${sub.returnType}\`\n`);
             }
             
             return new vscode.Hover(content, wordRange);
