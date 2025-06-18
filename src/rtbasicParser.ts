@@ -65,12 +65,21 @@ export interface RtBasicCFunction {
   sourceFile?: string;
 }
 
+export interface RtBasicBuiltinFunction {
+  name: string;
+  description: string;
+  parameters: RtBasicParameter[];
+  returnType: string;
+  example?: string;
+}
+
 export interface RtBasicSymbol {
   variables: RtBasicVariable[];
   subs: RtBasicSub[];
   structures: RtBasicStructure[];
   controlBlocks: ControlBlock[];
   cFunctions: RtBasicCFunction[];
+  builtinFunctions: RtBasicBuiltinFunction[];
 }
 
 export class RtBasicParser {
@@ -144,11 +153,13 @@ export class RtBasicParser {
     subs: [],
     structures: [],
     controlBlocks: [],
-    cFunctions: []
+    cFunctions: [],
+    builtinFunctions: []
   };
 
   constructor() {
     this.reset();
+    this.loadBuiltinFunctions();
   }
 
   public reset(): void {
@@ -157,8 +168,51 @@ export class RtBasicParser {
       subs: [],
       structures: [],
       controlBlocks: [],
-      cFunctions: []
+      cFunctions: [],
+      builtinFunctions: []
     };
+  }
+
+  private async loadBuiltinFunctions(): Promise<void> {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      
+      // 获取内置函数定义文件的路径
+      const configPath = path.join(__dirname, 'builtinFunctions.json');
+      
+      // 读取并解析配置文件
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      const config = JSON.parse(configContent);
+      
+      // 更新内置函数列表
+      this.symbols.builtinFunctions = config.functions;
+      
+      console.log(`Loaded ${this.symbols.builtinFunctions.length} builtin functions`);
+    } catch (error) {
+      console.error('Failed to load builtin functions:', error);
+      // 确保即使加载失败也至少有ZINDEX_STRUCT函数
+      this.symbols.builtinFunctions = [{
+        name: 'ZINDEX_STRUCT',
+        description: '访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。',
+        parameters: [
+          {
+            name: 'structName',
+            type: 'String',
+            description: '结构体名称',
+            direction: 'in'
+          },
+          {
+            name: 'structPtr',
+            type: 'Long',
+            description: '结构体指针',
+            direction: 'in'
+          }
+        ],
+        returnType: 'Variant',
+        example: 'result = ZINDEX_STRUCT("MyStruct", ptr).memberName'
+      }];
+    }
   }
 
   public parse(document: vscode.TextDocument): RtBasicSymbol {

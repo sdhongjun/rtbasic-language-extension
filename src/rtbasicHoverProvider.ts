@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicVariable, RtBasicStructure, RtBasicCFunction } from './rtbasicParser';
+import { RtBasicParser, RtBasicVariable, RtBasicStructure, RtBasicCFunction, RtBasicBuiltinFunction } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
 
 export class RtBasicHoverProvider implements vscode.HoverProvider {
@@ -436,6 +436,22 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             if (sourceFile !== document.uri.fsPath) {
                 content.appendText(`\n\nDefined in ${this.getRelativePath(sourceFile)}`);
             }
+            
+            return new vscode.Hover(content, wordRange);
+        }
+
+        // 检查内置函数
+        // 检查是否是ZINDEX_STRUCT内置函数
+        if (word === 'ZINDEX_STRUCT') {
+            const content = new vscode.MarkdownString()
+                .appendCodeblock('ZINDEX_STRUCT(structName, structPtr)', 'rtbasic')
+                .appendText('\n\n访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。')
+                .appendMarkdown('\n\n**参数:**\n')
+                .appendMarkdown('- `structName` : `String` - 结构体名称\n')
+                .appendMarkdown('- `structPtr` : `Long` - 结构体指针\n')
+                .appendMarkdown('\n**返回类型:** `Variant`\n')
+                .appendMarkdown('\n**示例:**\n')
+                .appendCodeblock('result = ZINDEX_STRUCT("MyStruct", ptr).memberName', 'rtbasic');
             
             return new vscode.Hover(content, wordRange);
         }

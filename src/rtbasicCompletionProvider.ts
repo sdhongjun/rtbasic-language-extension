@@ -406,6 +406,36 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             completions.push(item);
         });
 
+        // 添加内置函数补全
+        const builtinFunctions = [
+            {
+                name: 'ZINDEX_STRUCT',
+                kind: vscode.CompletionItemKind.Function,
+                detail: '(builtin function)',
+                documentation: new vscode.MarkdownString()
+                    .appendText('访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。\n\n')
+                    .appendCodeblock('result = ZINDEX_STRUCT("MyStruct", ptr).memberName', 'rtbasic')
+                    .appendText('\n参数:\n')
+                    .appendText('- structName: 结构体名称 (String)\n')
+                    .appendText('- structPtr: 结构体指针 (Long)\n')
+                    .appendText('\n返回类型: Variant'),
+                insertText: new vscode.SnippetString('ZINDEX_STRUCT("${1:structName}", ${2:ptr})'),
+                command: {
+                    command: 'editor.action.triggerParameterHints',
+                    title: 'Trigger parameter hints'
+                }
+            }
+        ];
+
+        completions.push(...builtinFunctions.map(func => {
+            const item = new vscode.CompletionItem(func.name, func.kind);
+            item.detail = func.detail;
+            item.documentation = func.documentation;
+            item.insertText = func.insertText;
+            item.command = func.command;
+            return item;
+        }));
+
         // 添加控制语句代码片段
         const controlSnippets = [
             {
