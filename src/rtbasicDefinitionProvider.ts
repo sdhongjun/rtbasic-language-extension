@@ -30,11 +30,82 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         // 首先在当前文件中查找局部符号
         
         // 检查局部变量和块作用域变量
-        const localVariable = currentFileSymbols.variables.find(v => 
+        // 首先尝试确定当前位置所在的函数和控制块
+        const currentPosition = position;
+        let currentSub = undefined;
+        let currentControlBlock = undefined;
+        
+        // 找到当前位置所在的函数
+        for (const sub of currentFileSymbols.subs) {
+            if (sub.range.contains(currentPosition)) {
+                currentSub = sub;
+                break;
+            }
+        }
+        
+        // 找到当前位置所在的控制块
+        if (currentSub) {
+            for (const block of currentFileSymbols.controlBlocks) {
+                if (block.range.contains(currentPosition) && block.parentSub === currentSub.name) {
+                    currentControlBlock = block;
+                    break;
+                }
+            }
+        }
+        
+        // 查找匹配的局部变量或块作用域变量
+        // 优先考虑当前控制块中的变量
+        if (currentControlBlock) {
+            // 在当前控制块中查找变量
+            const blockVariable = currentFileSymbols.variables.find(v => 
+                v.name === word && 
+                v.scope === 'block' && 
+                v.parentSub === currentSub?.name &&
+                v.parentBlock === currentControlBlock
+            );
+            
+            if (blockVariable) {
+                return new vscode.Location(document.uri, blockVariable.range);
+            }
+            
+            // 在父控制块中查找变量
+            let parentBlock = currentControlBlock.parentBlock;
+            while (parentBlock) {
+                const parentBlockVariable = currentFileSymbols.variables.find(v => 
+                    v.name === word && 
+                    v.scope === 'block' && 
+                    v.parentSub === currentSub?.name &&
+                    v.parentBlock === parentBlock
+                );
+                
+                if (parentBlockVariable) {
+                    return new vscode.Location(document.uri, parentBlockVariable.range);
+                }
+                
+                parentBlock = parentBlock.parentBlock;
+            }
+        }
+        
+        // 如果在控制块中没有找到，则查找函数级别的局部变量
+        if (currentSub) {
+            const localVariable = currentFileSymbols.variables.find(v => 
+                v.name === word && 
+                v.scope === 'local' && 
+                v.parentSub === currentSub.name
+            );
+            
+            if (localVariable) {
+                return new vscode.Location(document.uri, localVariable.range);
+            }
+        }
+        
+        // 如果以上都没找到，则查找任何匹配的局部变量或块作用域变量
+        const anyLocalVariable = currentFileSymbols.variables.find(v => 
             v.name === word && (v.scope === 'local' || v.scope === 'block')
         );
-        if (localVariable) {
-            return new vscode.Location(document.uri, localVariable.range);
+        
+        if (anyLocalVariable) {
+            return new vscode.Location(document.uri, anyLocalVariable.range);
         }
         
         // 检查文件变量

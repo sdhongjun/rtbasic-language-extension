@@ -60,7 +60,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         const currentContext = this.getCurrentContext(document, position, currentFileSymbols.subs, currentFileSymbols.controlBlocks);
         
         // 提供所有可用符号的补全（包括当前文件的局部符号和全局符号）
-        return this.provideSymbolCompletions(currentFileSymbols, mergedSymbols, currentContext.subName, currentContext.blockId);
+        return this.provideSymbolCompletions(document, position, currentFileSymbols, mergedSymbols, currentContext.subName, currentContext.blockId);
     }
 
     private provideStructureMemberCompletions(
@@ -128,7 +128,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         position: vscode.Position,
         subs: RtBasicSub[],
         controlBlocks: ControlBlock[]
-    ): { subName?: string; blockId?: string } {
+    ): { subName?: string; blockId?: string; currentBlock?: ControlBlock } {
         // 确定当前所在的 sub 函数
         let currentSub: string | undefined;
         for (const sub of subs) {
@@ -141,23 +141,34 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         }
 
         // 确定当前所在的 control block
-        let currentBlock: string | undefined;
+        let currentBlock: ControlBlock | undefined;
+        let currentBlockId: string | undefined;
+        
+        // 首先找到最内层的控制块
         for (const block of controlBlocks) {
             if (block.range && 
                 block.range.start.line <= position.line && 
                 block.range.end.line >= position.line) {
-                currentBlock = `${block.type}-${block.range.start.line}`;
-                break;
+                // 如果当前块在已找到的块内部，或者还没找到块
+                if (!currentBlock || 
+                    (block.range.start.line >= currentBlock.range.start.line && 
+                     block.range.end.line <= currentBlock.range.end.line)) {
+                    currentBlock = block;
+                    currentBlockId = `${block.type}-${block.range.start.line}`;
+                }
             }
         }
 
         return {
             subName: currentSub,
-            blockId: currentBlock
+            blockId: currentBlockId,
+            currentBlock: currentBlock
         };
     }
 
     private provideSymbolCompletions(
+        document: vscode.TextDocument,
+        position: vscode.Position,
         currentFileSymbols: any,
         mergedSymbols: any,
         currentSub?: string, 
@@ -172,8 +183,20 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
             switch (variable.scope) {
                 case 'block':
                     // 控制语句块作用域的变量
-                    shouldInclude = currentBlock === variable.parentBlock && 
-                                  currentSub === variable.parentSub;
+                    if (currentSub === variable.parentSub) {
+                        // 获取当前上下文中的控制块
+                        const context = this.getCurrentContext(document, position, currentFileSymbols.subs, currentFileSymbols.controlBlocks);
+                        let block = context.currentBlock;
+                        
+                        // 遍历当前块及其所有父块
+                        while (block) {
+                            if (block === variable.parentBlock) {
+                                shouldInclude = true;
+                                break;
+                            }
+                            block = block.parentBlock;
+                        }
+                    }
                     break;
                 case 'local':
                     // 局部变量
@@ -664,12 +687,12 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
                     }
                     continue;
                 }
-                
-                // 如果在字符串内，跳过
+            
+                // 如果在字符串内，跳过字符
                 if (inString) {
                     continue;
                 }
-                
+            
                 // 处理括号嵌套
                 if (char === '(') {
                     nestLevel++;

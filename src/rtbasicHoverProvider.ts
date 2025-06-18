@@ -146,7 +146,16 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     }
                     break;
                 case 'block':
-                    varCode = `Local ${variable.name}`;
+                    // 处理常量和普通块作用域变量
+                    if (variable.isConst) {
+                        varCode = `const ${variable.name}`;
+                        if (variable.value) {
+                            varCode += ` = ${variable.value}`;
+                        }
+                    } else {
+                        varCode = `Local ${variable.name}`;
+                    }
+                    
                     if (variable.isArray) {
                         varCode += `(${variable.arraySize})`;
                     }
@@ -157,10 +166,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     }
                     content.appendCodeblock(varCode, 'rtbasic');
                     
+                    // 构建更详细的作用域信息
                     let scopeInfo = '';
                     if (variable.parentSub) {
                         scopeInfo += `sub ${variable.parentSub}`;
                     }
+                    
                     if (variable.blockType) {
                         if (scopeInfo) {
                             scopeInfo += ', ';
@@ -168,10 +179,26 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                         scopeInfo += `${variable.blockType} block`;
                     }
                     
+                    // 添加行号信息
+                    if (variable.range) {
+                        const startLine = variable.range.start.line + 1; // 转换为1-based行号
+                        if (scopeInfo) {
+                            scopeInfo += ` at line ${startLine}`;
+                        } else {
+                            scopeInfo = `line ${startLine}`;
+                        }
+                    }
+                    
+                    // 显示完整的作用域路径
                     if (scopeInfo) {
-                        content.appendText(`\n\nBlock-scoped variable in ${scopeInfo}`);
+                        content.appendText(`\n\n${variable.isConst ? 'Block-scoped constant' : 'Block-scoped variable'} in ${scopeInfo}`);
                     } else {
-                        content.appendText(`\n\nBlock-scoped variable`);
+                        content.appendText(`\n\n${variable.isConst ? 'Block-scoped constant' : 'Block-scoped variable'}`);
+                    }
+                    
+                    // 如果是常量且有值，显示值信息
+                    if (variable.isConst && variable.value) {
+                        content.appendText(`\nValue: ${variable.value}`);
                     }
                     break;
                 case 'file':
