@@ -92,7 +92,8 @@ export class RtBasicWorkspaceManager {
             subs: [],
             structures: [],
             controlBlocks: [],
-            cFunctions: []
+            cFunctions: [],
+            builtinFunctions: []
         };
 
         // 合并所有文件的符号
@@ -145,7 +146,8 @@ export class RtBasicWorkspaceManager {
             subs: [...fileSymbols.subs],
             structures: [...fileSymbols.structures],
             controlBlocks: [...fileSymbols.controlBlocks],
-            cFunctions: [...(fileSymbols.cFunctions || [])]
+            cFunctions: [...(fileSymbols.cFunctions || [])],
+            builtinFunctions: [...(fileSymbols.builtinFunctions || [])]
         };
 
         // 添加其他文件的全局符号（避免重复）

@@ -1,24 +1,24 @@
 {
-  "functions": [
-    {
-      "name": "ZINDEX_STRUCT",
-      "description": "访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。",
-      "parameters": [
+    "functions": [
         {
-          "name": "structName",
-          "type": "String",
-          "description": "结构体名称",
-          "direction": "in"
-        },
-        {
-          "name": "structPtr",
-          "type": "Long",
-          "description": "结构体指针",
-          "direction": "in"
+            "name": "ZINDEX_STRUCT",
+            "description": "访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。",
+            "parameters": [
+                {
+                    "name": "structName",
+                    "type": "String",
+                    "description": "结构体名称",
+                    "optional": false
+                },
+                {
+                    "name": "structPtr",
+                    "type": "Long",
+                    "description": "结构体指针",
+                    "optional": false
+                }
+            ],
+            "returnType": "Variant",
+            "example": "result = ZINDEX_STRUCT(\"MyStruct\", ptr).memberName"
         }
-      ],
-      "returnType": "Variant",
-      "example": "result = ZINDEX_STRUCT(\"MyStruct\", ptr).memberName"
-    }
-  ]
+    ]
 }

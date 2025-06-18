@@ -9,6 +9,7 @@ RtBasic is a programming language based on VB syntax. This extension provides th
 ### Syntax Highlighting
 
 Colorization of RtBasic code elements including:
+
 - Keywords and control structures
 - Variables (global, file-level, and local)
 - Functions and subroutines
@@ -32,6 +33,7 @@ Colorization of RtBasic code elements including:
 ### Code Snippets
 
 Quickly insert common code patterns:
+
 - Global/local/file variables
 - Functions and subroutines
 - Structures
@@ -105,8 +107,8 @@ Visual Studio Code 1.60.0 or higher.
 
 This extension contributes the following settings:
 
-* `rtbasic.maxNumberOfProblems`: Controls the maximum number of problems produced by the extension.
-* `rtbasic.trace.server`: Traces the communication between VS Code and the RtBasic language server.
+- `rtbasic.maxNumberOfProblems`: Controls the maximum number of problems produced by the extension.
+- `rtbasic.trace.server`: Traces the communication between VS Code and the RtBasic language server.
 
 ## Known Issues
 

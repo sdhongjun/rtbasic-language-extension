@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock, RtBasicCFunction } from './rtbasicParser';
+import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock, RtBasicCFunction, RtBasicBuiltinFunction, RtBasicBuiltinFunctions } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
+import builtinFunctions from './builtinFunctions.json';
+
+// 将导入的JSON类型断言为RtBasicBuiltinFunctions
+const typedBuiltinFunctions = builtinFunctions as RtBasicBuiltinFunctions;
 
 export class RtBasicCompletionProvider implements vscode.CompletionItemProvider {
     private parser: RtBasicParser;
@@ -407,32 +411,53 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         });
 
         // 添加内置函数补全
-        const builtinFunctions = [
-            {
-                name: 'ZINDEX_STRUCT',
-                kind: vscode.CompletionItemKind.Function,
-                detail: '(builtin function)',
-                documentation: new vscode.MarkdownString()
-                    .appendText('访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。\n\n')
-                    .appendCodeblock('result = ZINDEX_STRUCT("MyStruct", ptr).memberName', 'rtbasic')
-                    .appendText('\n参数:\n')
-                    .appendText('- structName: 结构体名称 (String)\n')
-                    .appendText('- structPtr: 结构体指针 (Long)\n')
-                    .appendText('\n返回类型: Variant'),
-                insertText: new vscode.SnippetString('ZINDEX_STRUCT("${1:structName}", ${2:ptr})'),
-                command: {
-                    command: 'editor.action.triggerParameterHints',
-                    title: 'Trigger parameter hints'
-                }
+        completions.push(...typedBuiltinFunctions.functions.map(func => {
+            const item = new vscode.CompletionItem(func.name, vscode.CompletionItemKind.Function);
+            item.detail = '(builtin function)';
+            
+            // 创建文档字符串
+            const docs = new vscode.MarkdownString()
+                .appendText(`${func.description}\n\n`);
+            
+            // 添加语法示例
+            if (func.example) {
+                docs.appendCodeblock(func.example, 'rtbasic');
+                docs.appendText('\n');
             }
-        ];
-
-        completions.push(...builtinFunctions.map(func => {
-            const item = new vscode.CompletionItem(func.name, func.kind);
-            item.detail = func.detail;
-            item.documentation = func.documentation;
-            item.insertText = func.insertText;
-            item.command = func.command;
+            
+            // 添加参数信息
+            if (func.parameters.length > 0) {
+                docs.appendText('参数:\n');
+                func.parameters.forEach(param => {
+                    docs.appendText(`- ${param.name}${param.optional ? ' (可选)' : ''}: ${param.type}`);
+                    if (param.description) {
+                        docs.appendText(` - ${param.description}`);
+                    }
+                    docs.appendText('\n');
+                });
+                docs.appendText('\n');
+            }
+            
+            // 添加返回类型信息
+            if (func.returnType) {
+                docs.appendText(`返回类型: ${func.returnType}`);
+            }
+            
+            item.documentation = docs;
+            
+            // 创建参数提示的代码片段
+            const snippetParams = func.parameters.map((param, index) => {
+                return param.optional ? 
+                    `\${${index + 2}:, \${${index + 3}:${param.name}}}` : 
+                    `\${${index + 1}:${param.name}}`;
+            }).join(', ');
+            
+            item.insertText = new vscode.SnippetString(`${func.name}(${snippetParams})`);
+            item.command = {
+                command: 'editor.action.triggerParameterHints',
+                title: 'Trigger parameter hints'
+            };
+            
             return item;
         }));
 
@@ -575,9 +600,7 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
         const lineText = document.lineAt(position.line).text;
         const beforeCursor = lineText.substring(0, position.character);
         
-        // 查找正在调用的Sub，支持更复杂的情况
-        // 例如：myFunc(arg1, func2(arg), "string, with comma")
-        // 或者：result = myFunc(arg1, arg2)
+        // 查找正在调用的Sub或内置函数
         const subMatch = beforeCursor.match(/(?:^|[=\s;,])?\s*(\w+)\s*\(([^)]*)?$/);
         if (!subMatch) {
             return null;
@@ -585,26 +608,71 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
 
         const subName = subMatch[1];
         
-        // 首先在当前文件中查找非全局Sub
-        let sub = currentFileSymbols.subs.find(s => s.name === subName && !s.isGlobal);
+        // 首先检查是否是内置函数
+        const builtinFunc = typedBuiltinFunctions.functions.find(f => f.name === subName);
+        if (builtinFunc) {
+            const signatureHelp = new vscode.SignatureHelp();
+            
+            // 创建内置函数签名信息
+            const signature = new vscode.SignatureInformation(
+                `${builtinFunc.name}(${builtinFunc.parameters.map(p => 
+                    `${p.name}${p.optional ? '?' : ''}${p.type ? ` As ${p.type}` : ''}`
+                ).join(', ')})`,
+                new vscode.MarkdownString(builtinFunc.description)
+            );
+
+            // 为每个参数添加参数信息
+            signature.parameters = builtinFunc.parameters.map(param => {
+                let paramLabel = param.name;
+                if (param.optional) {
+                    paramLabel += '?';
+                }
+                if (param.type) {
+                    paramLabel += ` As ${param.type}`;
+                }
+                
+                const paramDoc = new vscode.MarkdownString()
+                    .appendText(`Parameter ${param.name}${param.optional ? ' (可选)' : ''}`);
+                
+                if (param.type) {
+                    paramDoc.appendText(`\nType: ${param.type}`);
+                }
+                
+                if (param.description) {
+                    paramDoc.appendText(`\n\n${param.description}`);
+                }
+                
+                // Direction property removed as it's not in the JSON schema
+                
+                return new vscode.ParameterInformation(paramLabel, paramDoc);
+            });
+
+            signatureHelp.signatures = [signature];
+            signatureHelp.activeSignature = 0;
+            
+            // 计算当前参数位置
+            if (subMatch[2]) {
+                const commaCount = subMatch[2].split(',').length - 1;
+                signatureHelp.activeParameter = Math.min(commaCount, builtinFunc.parameters.length - 1);
+            } else {
+                signatureHelp.activeParameter = 0;
+            }
+            
+            return signatureHelp;
+        }
         
-        // 如果在当前文件中没有找到，则在全局符号中查找
+        // 如果不是内置函数，继续查找Sub或C函数
+        let sub = currentFileSymbols.subs.find(s => s.name === subName && !s.isGlobal);
         if (!sub) {
             sub = mergedSymbols.subs.find(s => s.name === subName && s.isGlobal);
         }
         
-        // 如果没有找到Sub，尝试查找C函数
         let cFunction = null;
         if (!sub) {
-            // 首先在当前文件中查找C函数
             cFunction = currentFileSymbols.cFunctions?.find(f => f.name === subName);
-            
-            // 如果在当前文件中没有找到，则在全局符号中查找
             if (!cFunction && mergedSymbols.cFunctions) {
                 cFunction = mergedSymbols.cFunctions.find(f => f.name === subName);
             }
-            
-            // 如果也没有找到C函数，则返回null
             if (!cFunction) {
                 return null;
             }
@@ -614,7 +682,6 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
         
         if (sub) {
             // 处理Sub函数的签名
-            // 构建参数字符串
             const paramStrings = sub.parameters.map(p => {
                 let paramStr = p.name;
                 if (p.type) {
@@ -626,13 +693,11 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
                 return paramStr;
             });
             
-            // 创建函数签名信息
             const signature = new vscode.SignatureInformation(
                 `${sub.name}(${paramStrings.join(', ')})${sub.returnType ? ` As ${sub.returnType}` : ''}`,
                 new vscode.MarkdownString(`${sub.isGlobal ? 'Global ' : ''}Sub defined in ${sub.sourceFile || 'current file'}`)
             );
 
-            // 为每个参数添加参数信息
             signature.parameters = sub.parameters.map(param => {
                 let paramLabel = param.name;
                 if (param.type) {

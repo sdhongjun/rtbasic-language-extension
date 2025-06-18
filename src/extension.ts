@@ -1,11 +1,15 @@
 import * as vscode from 'vscode';
-import { RtBasicParser } from './rtbasicParser';
+import { RtBasicParser, RtBasicBuiltinFunctions } from './rtbasicParser';
 import { RtBasicDefinitionProvider } from './rtbasicDefinitionProvider';
 import { RtBasicCompletionProvider, RtBasicSignatureHelpProvider } from './rtbasicCompletionProvider';
 import { RtBasicHoverProvider } from './rtbasicHoverProvider';
 import { RtBasicDocumentFormatter } from './rtbasicFormatter';
 import { RtBasicDiagnosticProvider } from './rtbasicDiagnosticProvider';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
+import builtinFunctions from './builtinFunctions.json';
+
+// 将导入的JSON类型断言为RtBasicBuiltinFunctions
+const typedBuiltinFunctions = builtinFunctions as RtBasicBuiltinFunctions;
 
 export function activate(context: vscode.ExtensionContext) {
     // 创建解析器实例
@@ -13,6 +17,57 @@ export function activate(context: vscode.ExtensionContext) {
     
     // 创建工作区管理器
     const workspaceManager = new RtBasicWorkspaceManager(parser);
+    
+    // 注册内置函数虚拟文档提供程序
+    const builtinFuncScheme = 'rtbasic-builtin';
+    context.subscriptions.push(
+        vscode.workspace.registerTextDocumentContentProvider(builtinFuncScheme, {
+            provideTextDocumentContent(uri: vscode.Uri): string {
+                const funcName = uri.path.split('/').pop();
+                const builtinFunc = typedBuiltinFunctions.functions.find(f => f.name === funcName);
+                
+                if (!builtinFunc) {
+                    return '找不到内置函数的文档';
+                }
+                
+                let content = `# ${builtinFunc.name}\n\n`;
+                content += `${builtinFunc.description}\n\n`;
+                
+                content += '## 语法\n\n```rtbasic\n';
+                content += `${builtinFunc.name}(${builtinFunc.parameters.map(p => 
+                    `${p.name}${p.optional ? '?' : ''}`
+                ).join(', ')})\n`;
+                content += '```\n\n';
+                
+                if (builtinFunc.parameters.length > 0) {
+                    content += '## 参数\n\n';
+                    builtinFunc.parameters.forEach(param => {
+                        content += `### ${param.name}${param.optional ? ' (可选)' : ''}\n\n`;
+                        if (param.type) {
+                            content += `类型: ${param.type}\n\n`;
+                        }
+
+                        if (param.description) {
+                            content += `${param.description}\n\n`;
+                        }
+                    });
+                }
+                
+                if (builtinFunc.returnType) {
+                    content += '## 返回值\n\n';
+                    content += `类型: ${builtinFunc.returnType}\n\n`;
+                }
+                
+                if (builtinFunc.example) {
+                    content += '## 示例\n\n```rtbasic\n';
+                    content += `${builtinFunc.example}\n`;
+                    content += '```\n';
+                }
+                
+                return content;
+            }
+        })
+    );
     
     // 注册语言功能提供者
     const selector = { language: 'rtbasic', scheme: 'file' };
@@ -136,53 +191,34 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
-    // 监听文档变化事件，以更新解析结果
-    let timeout: NodeJS.Timeout | undefined = undefined;
-    const documentChangeHandler = async (document: vscode.TextDocument) => {
-        if (document.languageId !== 'rtbasic') {
-            return;
-        }
-
-        if (timeout) {
-            clearTimeout(timeout);
-            timeout = undefined;
-        }
-
-        timeout = setTimeout(async () => {
+    // 事件处理
+    let timeout: NodeJS.Timeout | undefined;
+    const handleDocumentChange = (document: vscode.TextDocument) => {
+        if (document.languageId !== 'rtbasic') return;
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
             parser.parse(document);
-            // 更新工作区管理器中的文件符号
-            await workspaceManager.parseFile(document.uri);
+            workspaceManager.parseFile(document.uri);
         }, 500);
     };
 
-    context.subscriptions.push(
-        vscode.workspace.onDidChangeTextDocument(e => documentChangeHandler(e.document))
-    );
-
-    // 监听文件创建和删除事件
-    context.subscriptions.push(
-        vscode.workspace.onDidCreateFiles(async (e) => {
-            for (const file of e.files) {
-                if (file.fsPath.endsWith('.bas')) {
-                    await workspaceManager.parseFile(file);
-                }
-            }
-        })
-    );
+    const handleFileEvent = (e: vscode.FileCreateEvent | vscode.FileDeleteEvent, isDelete = false) => {
+        e.files.filter(file => file.fsPath.endsWith('.bas'))
+            .forEach(file => isDelete 
+                ? workspaceManager.removeFile(file) 
+                : workspaceManager.parseFile(file));
+    };
 
     context.subscriptions.push(
-        vscode.workspace.onDidDeleteFiles((e) => {
-            for (const file of e.files) {
-                if (file.fsPath.endsWith('.bas')) {
-                    workspaceManager.removeFile(file);
-                }
-            }
-        })
+        vscode.workspace.onDidChangeTextDocument(e => handleDocumentChange(e.document)),
+        vscode.workspace.onDidCreateFiles(e => handleFileEvent(e)),
+        vscode.workspace.onDidDeleteFiles(e => handleFileEvent(e, true))
     );
 
     // 初始化当前打开的文档
     if (vscode.window.activeTextEditor) {
-        documentChangeHandler(vscode.window.activeTextEditor.document);
+        handleDocumentChange(vscode.window.activeTextEditor.document);
     }
 
     // 初始扫描工作区

@@ -14,6 +14,9 @@ export interface RtBasicVariable {
   sourceFile?: string;
   isConst?: boolean; // 标记是否为常量
   value?: string; // 存储常量的值
+  isStructMember?: boolean; // 标记是否为结构体成员
+  structName?: string; // 结构体变量名
+  memberName?: string; // 成员名称
 }
 
 // 控制语句块类型
@@ -68,9 +71,18 @@ export interface RtBasicCFunction {
 export interface RtBasicBuiltinFunction {
   name: string;
   description: string;
-  parameters: RtBasicParameter[];
+  parameters: Array<{
+    name: string;
+    type: string;
+    description?: string;
+    optional?: boolean;
+  }>;
   returnType: string;
   example?: string;
+}
+
+export interface RtBasicBuiltinFunctions {
+  functions: RtBasicBuiltinFunction[];
 }
 
 export interface RtBasicSymbol {
@@ -118,14 +130,15 @@ export class RtBasicParser {
     // 变量声明相关
     VARIABLE: {
       // 匹配变量声明的开始部分
-      GLOBAL_DIM: /^global\s+(?:dim\s+)?(.+)$/i,
+      GLOBAL_DIM: /^global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\s*[a-zA-Z0-9_]+\s*\))?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\s*[a-zA-Z0-9_]+\s*\))?)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?$/i,
+      // 匹配文件作用域常量声明
+      FILE_CONST: /^const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
       GLOBAL_CONST: /global\s+const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
       DIM: /^dim\s+(.+)$/i,
       LOCAL: /^local\s+(.+)$/i,
-      CONST: /const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
       
-      // 匹配单个变量声明（包括可选的数组大小和类型）
-      VARIABLE_DECLARATION: /([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\((\d+)\))?\s*(?:as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
+      // 匹配单个变量声明（包括可选的数组大小和类型）以及结构体成员访问
+      VARIABLE_DECLARATION: /([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*(?:\((\d+)\))?\s*(?:as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
       
       // 辅助正则表达式
       ARRAY: /(\w+)\s*\((\d+)\)/,
@@ -157,6 +170,8 @@ export class RtBasicParser {
     builtinFunctions: []
   };
 
+  private constants = new Map<string, number>();
+
   constructor() {
     this.reset();
     this.loadBuiltinFunctions();
@@ -171,6 +186,7 @@ export class RtBasicParser {
       cFunctions: [],
       builtinFunctions: []
     };
+    this.constants.clear();
   }
 
   private async loadBuiltinFunctions(): Promise<void> {
@@ -183,7 +199,7 @@ export class RtBasicParser {
       
       // 读取并解析配置文件
       const configContent = fs.readFileSync(configPath, 'utf8');
-      const config = JSON.parse(configContent);
+      const config = JSON.parse(configContent) as RtBasicBuiltinFunctions;
       
       // 更新内置函数列表
       this.symbols.builtinFunctions = config.functions;
@@ -200,13 +216,13 @@ export class RtBasicParser {
             name: 'structName',
             type: 'String',
             description: '结构体名称',
-            direction: 'in'
+            optional: false
           },
           {
             name: 'structPtr',
             type: 'Long',
             description: '结构体指针',
-            direction: 'in'
+            optional: false
           }
         ],
         returnType: 'Variant',
@@ -401,7 +417,8 @@ export class RtBasicParser {
       // 检查变量声明
       else if ((text.toLowerCase().startsWith("global") ||
            (text.toLowerCase().startsWith("dim") && !currentStructure) || 
-           text.toLowerCase().startsWith("local")) && 
+           text.toLowerCase().startsWith("local") ||
+           text.toLowerCase().startsWith("const")) && 
           (!text.toLowerCase().startsWith("local") || (currentSub || currentControlBlock))) {
         
         // 处理变量声明
@@ -723,6 +740,20 @@ export class RtBasicParser {
     parentSub?: string,
     parentBlock?: ControlBlock
   ): RtBasicVariable {
+    // 验证变量有效性
+    if (typeof varDecl === 'string' && !this.validateVariable({
+      name: varDecl,
+      range,
+      scope,
+      structType,
+      parentSub,
+      parentBlock,
+      isStructMember: varDecl.includes('.'),
+      structName: varDecl.includes('.') ? varDecl.split('.')[0] : undefined,
+      memberName: varDecl.includes('.') ? varDecl.split('.')[1] : undefined
+    })) {
+      throw new Error(`Invalid variable declaration: ${varDecl}`);
+    }
     const blockType = parentBlock ? parentBlock.type : undefined;
     
     // 如果传入的是对象，直接使用其属性
@@ -742,16 +773,40 @@ export class RtBasicParser {
     // 如果传入的是字符串，检查是否为数组变量
     const arrayMatch = varDecl.match(RtBasicParser.REGEX.VARIABLE.ARRAY);
     if (arrayMatch) {
+      // 检查数组变量是否是结构体成员
+      const isStructMember = arrayMatch[1].includes('.');
+      const structName = isStructMember ? arrayMatch[1].split('.')[0] : undefined;
+      const memberName = isStructMember ? arrayMatch[1].split('.')[1] : arrayMatch[1];
+      
       return {
         name: arrayMatch[1],
         range,
         scope,
         isArray: true,
         arraySize: parseInt(arrayMatch[2]),
-        structType,
+        structType: isStructMember ? structName : structType,
         parentSub,
         parentBlock,
-        blockType: blockType ? String(blockType) : undefined
+        blockType: blockType ? String(blockType) : undefined,
+        ...(isStructMember && { isStructMember: true, structName, memberName })
+      };
+    }
+    
+    // 检查是否是结构体成员
+    const isStructMember = varDecl.includes('.');
+    if (isStructMember) {
+      const [structName, memberName] = varDecl.split('.');
+      return {
+        name: varDecl,
+        range,
+        scope,
+        structType: structName,
+        parentSub,
+        parentBlock,
+        blockType: blockType ? String(blockType) : undefined,
+        isStructMember: true,
+        structName,
+        memberName
       };
     }
     
@@ -777,6 +832,39 @@ export class RtBasicParser {
     currentSub?: RtBasicSub,
     currentControlBlock?: ControlBlock
   ): { variable: RtBasicVariable; scope: "global" | "local" | "file" | "block" } | undefined {
+    // 检查文件作用域常量声明
+    if (text.toLowerCase().startsWith("const") && !currentSub && !currentControlBlock) {
+      const fileConstMatch = text.match(RtBasicParser.REGEX.VARIABLE.FILE_CONST);
+      if (fileConstMatch) {
+        const varName = fileConstMatch[1].trim();
+        const value = fileConstMatch[2].trim();
+        const type = fileConstMatch[3]?.trim();
+
+        const variable = this.parseVariableDeclaration(
+          varName,
+          lineRange,
+          "file",
+          type,
+          undefined,
+          undefined
+        );
+
+        // 计算常量表达式值
+        let evaluatedValue = value;
+        const numericValue = this.evaluateMathExpression(value);
+        if (numericValue !== undefined) {
+          evaluatedValue = numericValue.toString();
+        }
+
+        // 添加常量特定属性
+        variable.isConst = true;
+        variable.value = evaluatedValue;
+        variable.type = type || this.inferTypeFromValue(evaluatedValue);
+
+        return { variable, scope: "file" };
+      }
+    }
+
     // 检查全局变量声明
     if (text.toLowerCase().startsWith("global")) {
       const globalConstMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_CONST);
@@ -794,10 +882,17 @@ export class RtBasicParser {
           currentControlBlock
         );
 
+        // 计算常量表达式值
+        let evaluatedValue = value;
+        const numericValue = this.evaluateMathExpression(value);
+        if (numericValue !== undefined) {
+          evaluatedValue = numericValue.toString();
+        }
+
         // 添加常量特定属性
         variable.isConst = true;
-        variable.value = value;
-        variable.type = type || this.inferTypeFromValue(value);
+        variable.value = evaluatedValue;
+        variable.type = type || this.inferTypeFromValue(evaluatedValue);
 
         return { variable, scope: "global" };
       }
@@ -902,7 +997,7 @@ export class RtBasicParser {
     
     // 检查常量声明
     else if (text.toLowerCase().startsWith("const") && currentControlBlock) {
-      const constMatch = text.match(RtBasicParser.REGEX.VARIABLE.CONST);
+      const constMatch = text.match(RtBasicParser.REGEX.VARIABLE.FILE_CONST);
       if (constMatch) {
         const varName = constMatch[1].trim();
         const value = constMatch[2].trim();
@@ -994,6 +1089,38 @@ export class RtBasicParser {
    * @param declarationStr 变量声明字符串，不包含开头的 global/dim/local 关键字
    * @returns 变量声明数组，每个元素包含变量名、数组大小（可选）和类型（可选）
    */
+  private evaluateMathExpression(expr: string): number | undefined {
+    if (!expr || !expr.trim()) {
+      console.warn('警告: 空表达式');
+      return undefined;
+    }
+
+    // 移除所有空白字符
+    const cleanedExpr = expr.replace(/\s+/g, '');
+    
+    // 验证表达式只包含数字、运算符和括号
+    if (!/^[\d+\-*\/()]+$/.test(cleanedExpr)) {
+      console.warn(`警告: 表达式包含非法字符: ${cleanedExpr}`);
+      return undefined;
+    }
+
+    // 使用Function构造函数安全计算表达式
+    try {
+      // eslint-disable-next-line no-new-func
+      const result = new Function(`return ${cleanedExpr}`)();
+      if (typeof result !== 'number' || isNaN(result)) {
+        console.warn(`警告: 无效的数值结果: ${result}`);
+        return undefined;
+      }
+      return Math.floor(result); // 确保返回整数
+    } catch (e) {
+      console.warn(`警告: 无法计算表达式 "${cleanedExpr}": ${
+        e instanceof Error ? e.message : String(e)
+      }`);
+      return undefined;
+    }
+  }
+
   private extractVariableDeclarations(declarationStr: string): Array<{
     name: string;
     arraySize?: number;
@@ -1008,20 +1135,83 @@ export class RtBasicParser {
     // 移除可能的行尾注释
     const strWithoutComment = declarationStr.replace(/('|rem\s).*$/i, '').trim();
     
-    // 分割多个变量声明
-    const declarations = strWithoutComment.split(',').map(decl => decl.trim());
+    // 分割多个变量声明，但保留带as的类型声明
+    const declarations: string[] = [];
+    let currentDecl = '';
+    let inAsClause = false;
     
+    for (const part of strWithoutComment.split(',')) {
+      const trimmedPart = part.trim();
+      if (trimmedPart.includes(' as ')) {
+        // 遇到as类型声明，结束当前声明
+        currentDecl += (currentDecl ? ', ' : '') + trimmedPart;
+        declarations.push(currentDecl);
+        currentDecl = '';
+        inAsClause = false;
+      } else if (inAsClause) {
+        // 在as子句中，继续添加到当前声明
+        currentDecl += ', ' + trimmedPart;
+      } else {
+        // 普通变量声明部分
+        if (currentDecl) {
+          declarations.push(currentDecl);
+          currentDecl = '';
+        }
+        currentDecl = trimmedPart;
+      }
+    }
+    
+    if (currentDecl) {
+      declarations.push(currentDecl);
+    }
+    
+    // 处理每个独立的变量声明
     for (const declaration of declarations) {
-      // 使用 VARIABLE_DECLARATION 正则表达式匹配单个变量声明
-      const match = declaration.match(RtBasicParser.REGEX.VARIABLE.VARIABLE_DECLARATION);
+      // 匹配变量名、数组大小和类型
+      const match = declaration.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*([a-zA-Z0-9_]+)\s*\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i);
       
       if (match) {
-        const [, name, arraySize, type] = match;
+        const [, name, arraySizeExpr, type] = match;
+        const varName = name.trim();
+        const varType = type?.trim();
+        
+        // 处理数组维度
+        let arraySize: number | undefined;
+        if (arraySizeExpr) {
+          // 尝试解析为数字
+          if (/^\d+$/.test(arraySizeExpr)) {
+            arraySize = parseInt(arraySizeExpr, 10);
+          } 
+          // 尝试解析为常量
+          else if (this.constants.has(arraySizeExpr)) {
+            arraySize = this.constants.get(arraySizeExpr);
+          }
+          // 尝试解析为算术表达式或变量引用
+          else {
+            // 替换变量引用为常量值
+            let expr = arraySizeExpr;
+            const varMatches = arraySizeExpr.matchAll(/([a-zA-Z_]\w*)/g);
+            for (const match of varMatches) {
+              const varName = match[1];
+              if (this.constants.has(varName)) {
+                expr = expr.replace(new RegExp(`\\b${varName}\\b`, 'g'), this.constants.get(varName)!.toString());
+              }
+            }
+            
+            // 安全计算表达式
+            const evaluatedSize = this.evaluateMathExpression(expr);
+            if (evaluatedSize !== undefined && evaluatedSize >= 0) {
+              arraySize = evaluatedSize;
+            } else {
+              console.warn(`无法确定数组长度: ${arraySizeExpr}`);
+            }
+          }
+        }
         
         result.push({
-          name: name.trim(),
-          ...(arraySize && { arraySize: parseInt(arraySize, 10) }),
-          ...(type && { type: type.trim() })
+          name: varName,
+          ...(arraySize && { arraySize }),
+          ...(varType && { type: varType })
         });
       }
     }
@@ -1207,6 +1397,56 @@ export class RtBasicParser {
       subName: currentSub.name,
       currentBlock: containingBlocks.length > 0 ? containingBlocks[0] : undefined
     };
+  }
+
+  /**
+   * 获取指定常量的值
+   * @param name 常量名称
+   * @returns 常量值字符串，如果未找到则返回undefined
+   */
+  public getConstantValue(name: string): string | undefined {
+    // 在符号表中查找匹配的常量
+    const constant = this.symbols.variables.find(v => 
+      v.name === name && v.isConst
+    );
+    
+    return constant?.value;
+  }
+
+  /**
+   * 验证变量是否符合语法规则
+   * @param variable 要验证的变量
+   * @returns 如果变量有效返回true，否则返回false
+   */
+  private validateVariable(variable: RtBasicVariable): boolean {
+    // 检查结构体成员变量
+    if (variable.isStructMember) {
+      // 结构体成员格式应为 structName.memberName
+      if (!variable.name.match(/^[a-zA-Z_][a-zA-Z0-9_]*\.[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+        return false;
+      }
+      
+      // 检查结构体变量名是否有效
+      if (!variable.structName || !variable.structName.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+        return false;
+      }
+      
+      // 检查成员名是否有效
+      if (!variable.memberName || !variable.memberName.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+        return false;
+      }
+    } 
+    // 检查普通变量名是否有效
+    else if (!variable.name.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+      return false;
+    }
+
+    // 检查数组大小是否有效
+    if (variable.isArray && (!variable.arraySize || variable.arraySize <= 0)) {
+      return false;
+    }
+
+    return true;
   }
 
   public getSymbolAtPosition(

@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
-import { RtBasicParser } from './rtbasicParser';
+import { RtBasicParser, RtBasicBuiltinFunctions } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
+import builtinFunctions from './builtinFunctions.json';
+
+// 将导入的JSON类型断言为RtBasicBuiltinFunctions
+const typedBuiltinFunctions = builtinFunctions as RtBasicBuiltinFunctions;
 
 export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
     private parser: RtBasicParser;
@@ -22,6 +26,15 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         }
 
         const word = document.getText(wordRange);
+        
+        // 首先检查是否是内置函数
+        const builtinFunc = typedBuiltinFunctions.functions.find(f => f.name === word);
+        if (builtinFunc) {
+            // 为内置函数创建虚拟位置
+            const uri = vscode.Uri.parse(`rtbasic-builtin:///builtin/${word}`);
+            const pos = new vscode.Position(0, 0);
+            return new vscode.Location(uri, pos);
+        }
         
         // 获取当前文件的符号和合并的全局符号
         const currentFileSymbols = this.parser.parse(document);

@@ -72,7 +72,8 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                 
                 const content = new vscode.MarkdownString()
                     .appendCodeblock(memberCode, 'rtbasic')
-                    .appendText(`\n\nMember of structure ${structure.name}`);
+                    .appendText(`\n\nMember of structure ${structure.name}`)
+                    .appendMarkdown(`\n\n[Go to ${structure.name} definition](command:editor.action.goToDeclaration)`);
                 
                 if (sourceFile !== document.uri.fsPath) {
                     content.appendText(`\nDefined in ${this.getRelativePath(sourceFile)}`);
@@ -298,6 +299,15 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                 content.appendText(`\nArray with size ${variable.arraySize}`);
             }
             
+            return new vscode.Hover(content, wordRange);
+        }
+
+        // 检查常量值
+        const constValue = this.parser.getConstantValue(word);
+        if (constValue !== undefined) {
+            const content = new vscode.MarkdownString()
+                .appendCodeblock(`const ${word} = ${constValue}`, 'rtbasic')
+                .appendText('\n\nConstant value');
             return new vscode.Hover(content, wordRange);
         }
 
