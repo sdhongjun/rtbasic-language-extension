@@ -1111,6 +1111,50 @@ export class RtBasicParser {
   /**
    * 获取指定位置的符号信息
    */
+  /**
+   * 获取指定位置的上下文信息
+   * @param document 文档对象
+   * @param position 位置
+   * @param subs 函数列表
+   * @param controlBlocks 控制块列表
+   * @returns 包含当前上下文信息的对象
+   */
+  public getCurrentContext(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    subs: RtBasicSub[],
+    controlBlocks: ControlBlock[]
+  ): { subName?: string; currentBlock?: ControlBlock } {
+    // 首先找到当前所在的函数
+    const currentSub = subs.find(sub => 
+      sub.range.contains(position)
+    );
+
+    // 如果不在任何函数中，直接返回空上下文
+    if (!currentSub) {
+      return {};
+    }
+
+    // 找到当前位置所在的所有控制块
+    const containingBlocks = controlBlocks
+      .filter(block => 
+        block.range.contains(position) && 
+        block.parentSub === currentSub.name
+      )
+      // 按照范围大小排序，最小的范围（最内层的块）在前
+      .sort((a, b) => {
+        const aSize = (a.range.end.line - a.range.start.line) * 1000 + (a.range.end.character - a.range.start.character);
+        const bSize = (b.range.end.line - b.range.start.line) * 1000 + (b.range.end.character - b.range.start.character);
+        return aSize - bSize;
+      });
+
+    // 返回上下文信息
+    return {
+      subName: currentSub.name,
+      currentBlock: containingBlocks.length > 0 ? containingBlocks[0] : undefined
+    };
+  }
+
   public getSymbolAtPosition(
     document: vscode.TextDocument,
     position: vscode.Position

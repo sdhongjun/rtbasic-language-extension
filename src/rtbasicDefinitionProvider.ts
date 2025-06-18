@@ -30,28 +30,10 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         // 首先在当前文件中查找局部符号
         
         // 检查局部变量和块作用域变量
-        // 首先尝试确定当前位置所在的函数和控制块
-        const currentPosition = position;
-        let currentSub = undefined;
-        let currentControlBlock = undefined;
-        
-        // 找到当前位置所在的函数
-        for (const sub of currentFileSymbols.subs) {
-            if (sub.range.contains(currentPosition)) {
-                currentSub = sub;
-                break;
-            }
-        }
-        
-        // 找到当前位置所在的控制块
-        if (currentSub) {
-            for (const block of currentFileSymbols.controlBlocks) {
-                if (block.range.contains(currentPosition) && block.parentSub === currentSub.name) {
-                    currentControlBlock = block;
-                    break;
-                }
-            }
-        }
+        // 使用getCurrentContext方法获取当前位置的上下文信息
+        const context = this.parser.getCurrentContext(document, position, currentFileSymbols.subs, currentFileSymbols.controlBlocks);
+        const currentSub = context.subName ? currentFileSymbols.subs.find(sub => sub.name === context.subName) : undefined;
+        const currentControlBlock = context.currentBlock;
         
         // 查找匹配的局部变量或块作用域变量
         // 优先考虑当前控制块中的变量

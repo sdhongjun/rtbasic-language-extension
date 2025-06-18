@@ -87,12 +87,48 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         // 检查变量
-        // 首先检查当前文件中的局部变量、块作用域变量和文件变量
-        let variable = currentFileSymbols.variables.find(v => 
-            v.name === word && (v.scope === 'local' || v.scope === 'file' || v.scope === 'block')
-        );
-        
-        // 如果没有找到局部变量、块作用域变量或文件变量，则检查全局变量
+        // 获取当前上下文
+        const context = this.parser.getCurrentContext(document, position, currentFileSymbols.subs, currentFileSymbols.controlBlocks);
+        let variable: RtBasicVariable | undefined;
+
+        // 按照从内到外的顺序搜索变量
+        if (context.currentBlock) {
+            // 1. 首先在当前块中搜索
+            const blockVariables = currentFileSymbols.variables
+                .filter(v => v.scope === 'block' && v.parentSub === context.subName)
+                .sort((a, b) => {
+                    // 确保有range属性
+                    if (!a.range || !b.range) return 0;
+                    // 按行号逆序排序
+                    return b.range.start.line - a.range.start.line;
+                });
+
+            // 找到第一个在当前位置之前定义的变量
+            variable = blockVariables.find(v => 
+                v.name === word && 
+                v.range && 
+                (v.range.start.line < position.line || 
+                (v.range.start.line === position.line && v.range.start.character < position.character))
+            );
+        }
+
+        // 2. 如果没有找到，检查函数作用域的局部变量
+        if (!variable && context.subName) {
+            variable = currentFileSymbols.variables.find(v => 
+                v.name === word && 
+                v.scope === 'local' && 
+                v.parentSub === context.subName
+            );
+        }
+
+        // 3. 如果仍然没有找到，检查文件作用域变量
+        if (!variable) {
+            variable = currentFileSymbols.variables.find(v => 
+                v.name === word && v.scope === 'file'
+            );
+        }
+
+        // 4. 最后检查全局变量
         if (!variable) {
             // 先检查当前文件中的全局变量
             variable = currentFileSymbols.variables.find(v => 
