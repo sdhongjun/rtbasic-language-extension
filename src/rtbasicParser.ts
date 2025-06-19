@@ -59,6 +59,7 @@ export interface RtBasicStructure {
   range: vscode.Range;
   isGlobal: boolean;  // 添加isGlobal属性来区分全局和文件作用域结构体
   sourceFile?: string;
+  parentSub?: string; // 所属函数名，仅对局部结构体有效
 }
 
 export interface RtBasicCFunction {
@@ -337,17 +338,26 @@ export class RtBasicParser {
           };
         }
       }
-      // 解析文件作用域结构体开始
+      // 解析结构体开始
       else if (text.toLowerCase().startsWith("structure")) {
         const match = text.match(/structure\s+(\w+)/i);
         if (match) {
+          // 根据上下文确定结构体作用域
+          const isGlobal = false; // 无global修饰符的结构体默认不是全局的
+          const inSub = currentSub !== undefined;
+          
           currentStructure = {
             name: match[1],
             members: [],
             range: new vscode.Range(line.range.start, line.range.end),
-            isGlobal: false,  // 设置为文件作用域
+            isGlobal: isGlobal,
             sourceFile: document.uri.fsPath
           };
+          
+          // 如果在函数或控制块内，设置parentSub
+          if (inSub) {
+            currentStructure.parentSub = currentSub?.name;
+          }
         }
       }
 
@@ -792,20 +802,25 @@ export class RtBasicParser {
       };
     }
     
-    // 检查是否是结构体成员
-    const isStructMember = varDecl.includes('.');
-    if (isStructMember) {
-      const [structName, memberName] = varDecl.split('.');
+    // 检查是否是结构体成员访问表达式
+    const isStructMemberAccess = varDecl.includes('.');
+    if (isStructMemberAccess) {
+      const [structVarName, memberName] = varDecl.split('.');
+      
+      // 查找结构体变量定义
+      const structVar = this.symbols.variables.find(v => v.name === structVarName);
+      const structType = structVar?.structType;
+      
       return {
         name: varDecl,
         range,
         scope,
-        structType: structName,
+        structType,
         parentSub,
         parentBlock,
         blockType: blockType ? String(blockType) : undefined,
         isStructMember: true,
-        structName,
+        structName: structVarName,
         memberName
       };
     }
@@ -900,6 +915,8 @@ export class RtBasicParser {
       const globalDimMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_DIM);
       if (globalDimMatch) {
         const varDeclaration = globalDimMatch[1].trim();
+        const typeMatch = text.match(/\bas\s+(\w+)\b/i);
+        const structType = typeMatch ? typeMatch[1] : undefined;
         
         // 提取变量声明中的所有变量
         const varDeclarations = this.extractVariableDeclarations(varDeclaration);
@@ -911,7 +928,7 @@ export class RtBasicParser {
             firstVar,
             lineRange,
             "global",
-            undefined,
+            structType,
             undefined,
             currentControlBlock
           );
@@ -924,7 +941,7 @@ export class RtBasicParser {
                 varInfo,
                 lineRange,
                 "global",
-                undefined,
+                structType,
                 undefined,
                 currentControlBlock
               );
@@ -950,6 +967,8 @@ export class RtBasicParser {
       const dimMatch = text.match(RtBasicParser.REGEX.VARIABLE.DIM);
       if (dimMatch) {
         const varDeclaration = dimMatch[1].trim();
+        const typeMatch = text.match(/\bas\s+(\w+)\b/i);
+        const structType = typeMatch ? typeMatch[1] : undefined;
         
         // 提取变量声明中的所有变量
         const varDeclarations = this.extractVariableDeclarations(varDeclaration);
@@ -961,7 +980,7 @@ export class RtBasicParser {
             firstVar,
             lineRange,
             "file",
-            undefined,
+            structType,
             undefined,
             currentControlBlock
           );
@@ -974,7 +993,7 @@ export class RtBasicParser {
                 varInfo,
                 lineRange,
                 "file",
-                undefined,
+                structType,
                 undefined,
                 currentControlBlock
               );

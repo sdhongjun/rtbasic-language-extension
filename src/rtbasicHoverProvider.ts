@@ -16,28 +16,103 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         position: vscode.Position,
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Hover> {
-        const wordRange = document.getWordRangeAtPosition(position);
-        if (!wordRange) {
+        // 获取当前行的文本和光标位置
+        const currentLine = document.lineAt(position.line).text;
+        const cursorPos = position.character;
+        
+        // 增强的单词解析逻辑
+        let start = cursorPos;
+        let end = cursorPos;
+        
+        // 向前查找单词开始位置，支持结构体成员访问
+        while (start > 0) {
+            const prevChar = currentLine.charAt(start - 1);
+            if (!/[\w.]/.test(prevChar)) break;
+            // 如果是点号，前面必须是有效字符
+            if (prevChar === '.' && start > 1 && !/[\w]/.test(currentLine.charAt(start - 2))) break;
+            start--;
+        }
+        
+        // 向后查找单词结束位置
+        while (end < currentLine.length) {
+            const nextChar = currentLine.charAt(end);
+            if (!/[\w]/.test(nextChar)) break;
+            end++;
+        }
+        
+        // 获取完整单词或表达式
+        let word = currentLine.substring(start, end).trim();
+        
+        // 处理结构体成员访问
+        if (word.includes('.')) {
+            // 获取点操作符位置
+            const dotPos = currentLine.indexOf('.', start);
+            if (dotPos > -1 && dotPos < end) {
+                // 获取点前面的完整对象名
+                let objStart = dotPos - 1;
+                while (objStart >= start && /[\w]/.test(currentLine.charAt(objStart))) {
+                    objStart--;
+                }
+                const objName = currentLine.substring(objStart + 1, dotPos).trim();
+                
+                // 获取点后面的成员名
+                let memberEnd = dotPos + 1;
+                while (memberEnd < end && /[\w]/.test(currentLine.charAt(memberEnd))) {
+                    memberEnd++;
+                }
+                const memberName = currentLine.substring(dotPos + 1, memberEnd).trim();
+                
+                // 组合完整表达式
+                if (objName && memberName) {
+                    word = `${objName}.${memberName}`;
+                    // 调整选中范围
+                    start = objStart + 1;
+                    end = memberEnd;
+                }
+            }
+        }
+        const wordRange = new vscode.Range(
+            position.line, start,
+            position.line, end
+        );
+        
+        if (!word) {
             return null;
         }
-
-        const word = document.getText(wordRange);
         
         // 获取当前文件的符号和合并的全局符号
         const currentFileSymbols = this.parser.parse(document);
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
 
-        // 检查是否在结构体成员访问
-        const lineText = document.lineAt(position.line).text;
-        const beforeCursor = lineText.substring(0, position.character);
-        const dotMatch = beforeCursor.match(/(\w+)\.(\w*)$/);
+        // 提取可能的结构体成员访问表达式
+        const dotMatch = word.match(/(\w+)\.(\w*)/);
         
-        if (dotMatch && dotMatch[2] === word) {
+        if (dotMatch) {
             const structName = dotMatch[1];
-            const memberName = word;
+            const memberName = dotMatch[2]
             
-            // 首先在当前文件中查找结构体
-            let structure = currentFileSymbols.structures.find(s => s.name === structName);
+            // 首先检查变量声明，获取结构体类型
+            const variables = [...currentFileSymbols.variables, ...mergedSymbols.variables];
+            const structVar = variables.find(v => v.name === structName);
+            
+            // 确定实际结构体名称
+            let actualStructName = structName;
+            
+            // 如果变量有明确的structType，使用它
+            if (structVar?.structType) {
+                actualStructName = structVar.structType;
+            } 
+            // 否则检查变量是否是结构体实例
+            else {
+                const structure = [...currentFileSymbols.structures, ...mergedSymbols.structures]
+                    .find(s => s.name === structName);
+                if (structure) {
+                    actualStructName = structName;
+                }
+            }
+            
+            // 查找结构体定义
+            let structure = currentFileSymbols.structures.find(s => s.name === actualStructName);
             let member = null;
             let sourceFile = document.uri.fsPath;
             
@@ -45,14 +120,14 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                 member = structure.members.find(m => m.name === memberName);
             } else {
                 // 如果当前文件中没有找到，则在全局符号中查找
-                structure = mergedSymbols.structures.find(s => s.name === structName);
+                structure = mergedSymbols.structures.find(s => s.name === actualStructName);
                 
                 if (structure) {
                     member = structure.members.find(m => m.name === memberName);
                     
                     // 查找结构体的源文件
                     for (const [filePath, fileSymbols] of Object.entries(this.workspaceManager.getAllFileSymbols())) {
-                        const fileStruct = fileSymbols.structures.find(s => s.name === structName);
+                        const fileStruct = fileSymbols.structures.find(s => s.name === actualStructName);
                         if (fileStruct) {
                             sourceFile = filePath;
                             break;
