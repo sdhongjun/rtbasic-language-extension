@@ -85,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.languages.registerCompletionItemProvider(
             selector,
             new RtBasicCompletionProvider(parser, workspaceManager),
-            '.', '(' // 触发字符
+            '.', '(', ' ', '['
         )
     );
 

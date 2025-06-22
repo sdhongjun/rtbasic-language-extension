@@ -419,7 +419,8 @@ export class RtBasicParser {
 
       // 检查变量声明
       else if (text.toLowerCase().startsWith("global") /*global const、global dim、global*/ ||
-           (text.toLowerCase().startsWith("dim") && !currentStructure) || 
+           (text.toLowerCase().startsWith("dim") && !currentStructure) ||
+           text.toLowerCase().startsWith("local") ||
            text.toLowerCase().startsWith("const")) {
         
         // 处理变量声明

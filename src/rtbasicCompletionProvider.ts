@@ -225,7 +225,11 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
                 const scopeText = variable.scope === 'block' ? 'block-local' : variable.scope;
                 item.detail = `(${scopeText} variable)`;
                 if (variable.isArray) {
-                    item.detail += `(${variable.arraySize})`;
+                    if (variable.arraySize) {
+                        item.detail += `(${variable.arraySize})`;
+                    } else if (variable.arraySizeStr) {
+                        item.detail += `(${variable.arraySizeStr})`;
+                    }
                 }
                 if (variable.structType) {
                     item.detail += ` As ${variable.structType}`;
@@ -236,7 +240,11 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
                 // 设置文档说明
                 const docs = new vscode.MarkdownString();
                 if (variable.isArray) {
-                    docs.appendText(`Array size: ${variable.arraySize}\n`);
+                    if (variable.arraySize) {
+                        docs.appendText(`Array size: ${variable.arraySize}\n`);
+                    } else if (variable.arraySizeStr) {
+                        docs.appendText(`Array size: ${variable.arraySizeStr}\n`);
+                    }
                 }
                 docs.appendText(`Scope: ${scopeText}`);
                 if (variable.parentSub) {
