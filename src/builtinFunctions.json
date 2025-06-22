@@ -1,6 +1,104 @@
 {
     "functions": [
         {
+            "name": "ABS",
+            "description": "返回参数的绝对值。",
+            "parameters": [
+                {
+                    "name": "value",
+                    "type": "number",
+                    "description": "数值"
+                }
+            ],
+            "returnType": "number",
+            "example": "result = ABS(-10)"
+        },
+        {
+            "name": "ACCEL",
+            "description": "轴加速度，单位为units/s<sup>2</sup>。",
+            "parameters": [
+                {
+                    "name": "axis",
+                    "type": "Long",
+                    "description": "轴序号"
+                }
+            ],
+            "returnType": "number",
+            "example": "result = ACCEL(0)\nACCEL(0) = 1000"
+        },
+        {
+            "name": "ACOS",
+            "description": "反余弦三角函数，返回值为弧度单位。",
+            "parameters": [
+                {
+                    "name": "value",
+                    "type": "number",
+                    "description": "数值"
+                }
+            ],
+            "returnType": "number",
+            "example": "PRINT ACOS(0.5)'结果是1.04720=PI/3"
+        },
+        {
+            "name": "ADDAX",
+            "description": "运动叠加，把一个轴的运动叠加到另一个轴。\n叠加后，被叠加轴不要用绝对运动指令调用运动。可能会导致位置不对。\nADDAX指令叠加的是脉冲个数，而不是设置的units单位。",
+            "parameters": [
+                {
+                    "name": "srcaxis",
+                    "type": "Long",
+                    "description": "叠加的源轴号"
+                },
+                {
+                    "name": "imode",
+                    "type": "Long",
+                    "optional": true,
+                    "description": "叠加模式，0: 缺省值, 单轴叠加兼容以前的直接脉冲个数叠加\n1: 单轴叠加，，支持齿轮比调整\n    ADDAX(scraxis, 1, radio)\n    radio: 比例值，支持浮点数，目标轴运动距离 = 源轴距离 * radio\n2: 单轴叠加，支持比例调整"
+                },
+                {
+                    "name": "param",
+                    "type": "Variant",
+                    "optional": true,
+                    "description": "不同模式参数"
+                }
+            ]
+        },
+        {
+            "name": "ADDAX_AXIS",
+            "description": "ADDAX指令所叠加轴的轴号，-1表示没有叠加。",
+            "parameters": [
+                {
+                    "name": "axis",
+                    "type": "Long",
+                    "description": "轴号"
+                }
+            ],
+            "returnType": "Long",
+            "example": "ADDAX(0) AXIS(1) '轴0的运动叠加到轴1\n?ADDAX_AXIS(1) '打印出轴1叠加的轴，结果, 0\nADDAX(-1) AXIS(1) '取消叠加"
+        },
+        {
+            "name":"ADDRESS",
+            "description": "控制器的所有串口的MODBUS协议站号 1- 255，缺省=1",
+            "returnType": "Long",
+            "example": "ADDRESS = 2\nPRINT ADDRESS '打印出协议站号"
+        },
+        {
+            "name": "AFF_GAIN",
+            "description": "加速度反馈的前馈增益，非总线伺服不支持。\n60B2 pdo = (轴每个周期脉冲速度变化) * AFF_GAIN。"
+        },
+        {
+            "name": "AIN",
+            "description": "读取模拟输入，返回AD转换模块的刻度值。 12位刻度值范围0~4095对应0~10V电压。 16位刻度值范围0~65536对应0~10V电压。 ZAIO扩展板的AD通道号与拨码有关，起始值为（8 +拨码组合值*8），ZMIO总线扩展AD使用NODE_AIO指令只能设置为8的倍数，详细查看硬件手册。 注意AIO映射编号要大于控制器自身最大的AIO编号，不能与控制器的编号重合。 ",
+            "parameters": [
+                {
+                    "name": "channel",
+                    "type": "Long",
+                    "description": "模拟输入通道号，0~127"
+                }
+            ],
+            "returnType": "Long",
+            "example": "result = AIN(0) '读取0通道的AD值\na = AIN(1) * 10 / 4096 '通道的电压值"
+         },
+        {
             "name": "ZINDEX_STRUCT",
             "description": "访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。",
             "parameters": [
