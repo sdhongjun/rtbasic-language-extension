@@ -130,19 +130,11 @@ export class RtBasicParser {
     
     // 变量声明相关
     VARIABLE: {
-      // 匹配变量声明的开始部分
-      GLOBAL_DIM: /^global\s+(?:dim\s+)?([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\s*[a-zA-Z0-9_]+\s*\))?(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\s*\(\s*[a-zA-Z0-9_]+\s*\))?)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?$/i,
-      // 匹配文件作用域常量声明
-      FILE_CONST: /^const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
-      GLOBAL_CONST: /global\s+const\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.*?)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?(?:\s*'.*)?$/i,
-      DIM: /^dim\s+(.+)$/i,
-      LOCAL: /^local\s+(.+)$/i,
-      
       // 匹配单个变量声明（包括可选的数组大小和类型）以及结构体成员访问
       VARIABLE_DECLARATION: /([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*(?:\((\d+)\))?\s*(?:as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i,
       
       // 辅助正则表达式
-      ARRAY: /(\w+)\s*\((\d+)\)/,
+      ARRAY: /(\w+)\s*\((.+)\)/,
       TYPE: /as\s+([a-zA-Z_][a-zA-Z0-9_]*)/i
     }
   };
@@ -847,250 +839,97 @@ export class RtBasicParser {
     currentSub?: RtBasicSub,
     currentControlBlock?: ControlBlock
   ): { variable: RtBasicVariable; scope: "global" | "local" | "file" | "block" } | undefined {
-    // 检查文件作用域常量声明
-    if (text.toLowerCase().startsWith("const") && !currentSub && !currentControlBlock) {
-      const fileConstMatch = text.match(RtBasicParser.REGEX.VARIABLE.FILE_CONST);
-      if (fileConstMatch) {
-        const varName = fileConstMatch[1].trim();
-        const value = fileConstMatch[2].trim();
-        const type = fileConstMatch[3]?.trim();
+    // 删除行尾注释
+    let textWithoutComments = text.replace(/('|rem\s).*$/i, '').trim();
+    const isGlobal = /\bglobal\b/i.test(textWithoutComments);
+    const isConst = /\bconst\b/i.test(textWithoutComments);
+    const isLocal = /\blocal\b/i.test(textWithoutComments);
 
-        const variable = this.parseVariableDeclaration(
-          varName,
-          lineRange,
-          "file",
-          type,
-          undefined,
-          undefined
-        );
+    // 解析常量
+    if (isConst) {
+        const constMatch = text.match(/^(?:global\s+)?\bconst\b\s+(\w+)\s+=(.+)/i);
+        if (constMatch) {
+          const varName = constMatch[1].trim();// 常量名称
+          const value = constMatch[2].trim(); // 常量值
+          const scope: "global" | "file" = isGlobal ? "global" : "file";
 
-        // 计算常量表达式值
-        let evaluatedValue = value;
-        const numericValue = this.evaluateMathExpression(value);
-        if (numericValue !== undefined) {
-          evaluatedValue = numericValue.toString();
-        }
-
-        // 添加常量特定属性
-        variable.isConst = true;
-        variable.value = evaluatedValue;
-        variable.type = type || this.inferTypeFromValue(evaluatedValue);
-
-        return { variable, scope: "file" };
-      }
-    }
-
-    // 检查全局变量声明
-    if (text.toLowerCase().startsWith("global")) {
-      const globalConstMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_CONST);
-      if (globalConstMatch) {
-        const varName = globalConstMatch[1].trim();
-        const value = globalConstMatch[2].trim();
-        const type = globalConstMatch[3]?.trim();
-
-        const variable = this.parseVariableDeclaration(
-          varName,
-          lineRange,
-          "global",
-          type,
-          undefined,
-          currentControlBlock
-        );
-
-        // 计算常量表达式值
-        let evaluatedValue = value;
-        const numericValue = this.evaluateMathExpression(value);
-        if (numericValue !== undefined) {
-          evaluatedValue = numericValue.toString();
-        }
-
-        // 添加常量特定属性
-        variable.isConst = true;
-        variable.value = evaluatedValue;
-        variable.type = type || this.inferTypeFromValue(evaluatedValue);
-
-        return { variable, scope: "global" };
-      }
-
-      const globalDimMatch = text.match(RtBasicParser.REGEX.VARIABLE.GLOBAL_DIM);
-      if (globalDimMatch) {
-        const varDeclaration = globalDimMatch[1].trim();
-        const typeMatch = text.match(/\bas\s+(\w+)\b/i);
-        const structType = typeMatch ? typeMatch[1] : undefined;
-        
-        // 提取变量声明中的所有变量
-        const varDeclarations = this.extractVariableDeclarations(varDeclaration);
-        
-        if (varDeclarations.length > 0) {
-          // 处理第一个变量（保持原有行为，只返回第一个变量）
-          const firstVar = varDeclarations[0];
-          const variable = this.parseVariableDeclaration(
-            firstVar,
-            lineRange,
-            "global",
-            structType,
-            undefined,
-            currentControlBlock
-          );
-          
-          // 如果有多个变量，将其他变量添加到符号表中
-          if (varDeclarations.length > 1) {
-            for (let i = 1; i < varDeclarations.length; i++) {
-              const varInfo = varDeclarations[i];
-              const additionalVar = this.parseVariableDeclaration(
-                varInfo,
-                lineRange,
-                "global",
-                structType,
-                undefined,
-                currentControlBlock
-              );
-              this.symbols.variables.push(additionalVar);
-              
-              // 如果变量在控制块内，将其添加到控制块的变量列表中
-              if (currentControlBlock) {
-                if (!currentControlBlock.variables) {
-                  currentControlBlock.variables = [];
-                }
-                currentControlBlock.variables.push(additionalVar);
-              }
-            }
+          // 计算常量表达式值
+          let evaluatedValue = value;
+          const numericValue = this.evaluateMathExpression(value);
+          if (numericValue !== undefined) {
+            evaluatedValue = numericValue.toString();
           }
-          
-          return { variable, scope: "global" };
+
+          const variable: RtBasicVariable = {
+            name: varName,
+            range: lineRange,
+            scope: scope,
+            structType: undefined,
+            parentSub: currentSub?.name,
+            parentBlock: undefined,
+            blockType: undefined,
+            isConst: true,
+            value: evaluatedValue,
+            type: this.inferTypeFromValue(value)
+          };
+
+          return { variable, scope: scope };
         }
-      }
+
+        return undefined;
     }
+
+    // 删除作用域修饰符
+    textWithoutComments = textWithoutComments.replace(/(global\s+dim\s+|global\s+|dim\s+|local\s+)/i, '');
     
-    // 检查文件变量声明
-    else if (text.toLowerCase().startsWith("dim")) {
-      const dimMatch = text.match(RtBasicParser.REGEX.VARIABLE.DIM);
-      if (dimMatch) {
-        const varDeclaration = dimMatch[1].trim();
-        const typeMatch = text.match(/\bas\s+(\w+)\b/i);
-        const structType = typeMatch ? typeMatch[1] : undefined;
-        
-        // 提取变量声明中的所有变量
-        const varDeclarations = this.extractVariableDeclarations(varDeclaration);
-        
-        if (varDeclarations.length > 0) {
-          // 处理第一个变量（保持原有行为，只返回第一个变量）
-          const firstVar = varDeclarations[0];
-          const variable = this.parseVariableDeclaration(
-            firstVar,
-            lineRange,
-            "file",
-            structType,
-            undefined,
-            currentControlBlock
-          );
-          
-          // 如果有多个变量，将其他变量添加到符号表中
-          if (varDeclarations.length > 1) {
-            for (let i = 1; i < varDeclarations.length; i++) {
-              const varInfo = varDeclarations[i];
-              const additionalVar = this.parseVariableDeclaration(
-                varInfo,
-                lineRange,
-                "file",
-                structType,
-                undefined,
-                currentControlBlock
-              );
-              this.symbols.variables.push(additionalVar);
-              
-              // 如果变量在控制块内，将其添加到控制块的变量列表中
-              if (currentControlBlock) {
-                if (!currentControlBlock.variables) {
-                  currentControlBlock.variables = [];
-                }
-                currentControlBlock.variables.push(additionalVar);
-              }
-            }
-          }
-          
-          return { variable, scope: "file" };
-        }
-      }
-    }
-    
-    // 检查常量声明
-    else if (text.toLowerCase().startsWith("const") && currentControlBlock) {
-      const constMatch = text.match(RtBasicParser.REGEX.VARIABLE.FILE_CONST);
-      if (constMatch) {
-        const varName = constMatch[1].trim();
-        const value = constMatch[2].trim();
-        const type = constMatch[3]?.trim();
+    // 提取变量声明中的所有变量声明
+    const varDeclarations =
+      this.extractVariableDeclarations(textWithoutComments);
+    if (varDeclarations.length > 0) {
+      const scope: "global" | "local" | "file" = isGlobal
+        ? "global"
+        : isLocal
+        ? "local"
+        : "file";
 
-        const variable = this.parseVariableDeclaration(
-          varName,
-          lineRange,
-          "block",
-          type,
-          currentSub?.name,
-          currentControlBlock
-        );
+      // 处理第一个变量（保持原有行为，只返回第一个变量）
+      const firstVar = varDeclarations[0];
+      const variable = this.parseVariableDeclaration(
+        firstVar,
+        lineRange,
+        scope,
+        undefined,
+        currentSub?.name,
+        currentControlBlock
+      );
 
-        // 添加常量特定属性
-        variable.isConst = true;
-        variable.value = value;
-        variable.type = type || this.inferTypeFromValue(value);
-
-        return { variable, scope: "block" };
-      }
-    }
-    // 检查局部变量声明
-    else if (text.toLowerCase().startsWith("local")) {
-      const localMatch = text.match(RtBasicParser.REGEX.VARIABLE.LOCAL);
-      if (localMatch && (currentSub || currentControlBlock)) {
-        const varDeclaration = localMatch[1].trim();
-        
-        // 提取变量声明中的所有变量
-        const varDeclarations = this.extractVariableDeclarations(varDeclaration);
-        
-        if (varDeclarations.length > 0) {
-          const scope = currentControlBlock ? "block" : "local";
-          
-          // 处理第一个变量（保持原有行为，只返回第一个变量）
-          const firstVar = varDeclarations[0];
-          const variable = this.parseVariableDeclaration(
-            firstVar,
+      // 如果有多个变量，将其他变量添加到符号表中
+      if (varDeclarations.length > 1) {
+        for (let i = 1; i < varDeclarations.length; i++) {
+          const varInfo = varDeclarations[i];
+          const additionalVar = this.parseVariableDeclaration(
+            varInfo,
             lineRange,
             scope,
             undefined,
             currentSub?.name,
             currentControlBlock
           );
-          
-          // 如果有多个变量，将其他变量添加到符号表中
-          if (varDeclarations.length > 1) {
-            for (let i = 1; i < varDeclarations.length; i++) {
-              const varInfo = varDeclarations[i];
-              const additionalVar = this.parseVariableDeclaration(
-                varInfo,
-                lineRange,
-                scope,
-                undefined,
-                currentSub?.name,
-                currentControlBlock
-              );
-              this.symbols.variables.push(additionalVar);
-              
-              // 如果变量在控制块内，将其添加到控制块的变量列表中
-              if (currentControlBlock) {
-                if (!currentControlBlock.variables) {
-                  currentControlBlock.variables = [];
-                }
-                currentControlBlock.variables.push(additionalVar);
-              }
+          this.symbols.variables.push(additionalVar);
+
+          // 如果变量在控制块内，将其添加到控制块的变量列表中
+          if (currentControlBlock) {
+            if (!currentControlBlock.variables) {
+              currentControlBlock.variables = [];
             }
+            currentControlBlock.variables.push(additionalVar);
           }
-          
-          return { variable, scope };
         }
       }
+
+      return { variable, scope };
     }
-    
+
     return undefined;
   }
 
@@ -1150,16 +989,13 @@ export class RtBasicParser {
       arraySize?: number;
       type?: string;
     }> = [];
-
-    // 移除可能的行尾注释
-    const strWithoutComment = declarationStr.replace(/('|rem\s).*$/i, '').trim();
     
     // 分割多个变量声明，但保留带as的类型声明
     const declarations: string[] = [];
     let currentDecl = '';
     let inAsClause = false;
     
-    for (const part of strWithoutComment.split(',')) {
+    for (const part of declarationStr.split(',')) {
       const trimmedPart = part.trim();
       if (trimmedPart.includes(' as ')) {
         // 遇到as类型声明，结束当前声明
