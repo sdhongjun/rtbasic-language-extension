@@ -6,6 +6,7 @@ export interface RtBasicVariable {
   scope: "global" | "local" | "file" | "block" | "parameter";
   isArray?: boolean;
   arraySize?: number;
+  arraySizeStr?: string; // 数组大小字符串
   structType?: string;
   type?: string;
   parentSub?: string;
@@ -417,11 +418,9 @@ export class RtBasicParser {
       }
 
       // 检查变量声明
-      else if ((text.toLowerCase().startsWith("global") ||
+      else if (text.toLowerCase().startsWith("global") /*global const、global dim、global*/ ||
            (text.toLowerCase().startsWith("dim") && !currentStructure) || 
-           text.toLowerCase().startsWith("local") ||
-           text.toLowerCase().startsWith("const")) && 
-          (!text.toLowerCase().startsWith("local") || (currentSub || currentControlBlock))) {
+           text.toLowerCase().startsWith("const")) {
         
         // 处理变量声明
         const variableInfo = this.detectVariableDeclaration(text, lineRange, currentSub, currentControlBlock);
@@ -735,7 +734,7 @@ export class RtBasicParser {
   }
 
   private parseVariableDeclaration(
-    varDecl: string | { name: string; arraySize?: number; type?: string },
+    varDecl: string | { name: string; arraySize?: number; arraySizeStr?: string; type?: string },
     range: vscode.Range,
     scope: "global" | "local" | "file" | "block",
     structType?: string,
@@ -765,6 +764,7 @@ export class RtBasicParser {
         range,
         scope,
         ...(varDecl.arraySize && { isArray: true, arraySize: varDecl.arraySize }),
+        ...(varDecl.arraySizeStr && { isArray: true, arraySizeStr: varDecl.arraySizeStr}),
         structType: varDecl.type || structType,
         parentSub,
         parentBlock,
@@ -900,7 +900,7 @@ export class RtBasicParser {
         scope,
         undefined,
         currentSub?.name,
-        currentControlBlock
+        currentControlBlock,
       );
 
       // 如果有多个变量，将其他变量添加到符号表中
@@ -988,6 +988,7 @@ export class RtBasicParser {
       name: string;
       arraySize?: number;
       type?: string;
+      arraySizeStr?: string;
     }> = [];
     
     // 分割多个变量声明，但保留带as的类型声明
@@ -1032,6 +1033,7 @@ export class RtBasicParser {
         
         // 处理数组维度
         let arraySize: number | undefined;
+        let arraySizeStr: string | undefined;
         if (arraySizeExpr) {
           // 尝试解析为数字
           if (/^\d+$/.test(arraySizeExpr)) {
@@ -1058,7 +1060,7 @@ export class RtBasicParser {
             if (evaluatedSize !== undefined && evaluatedSize >= 0) {
               arraySize = evaluatedSize;
             } else {
-              console.warn(`无法确定数组长度: ${arraySizeExpr}`);
+                arraySizeStr = arraySizeExpr;
             }
           }
         }
@@ -1066,6 +1068,7 @@ export class RtBasicParser {
         result.push({
           name: varName,
           ...(arraySize && { arraySize }),
+          ...(arraySizeStr && { arraySizeStr }),
           ...(varType && { type: varType })
         });
       }
@@ -1297,7 +1300,7 @@ export class RtBasicParser {
     }
 
     // 检查数组大小是否有效
-    if (variable.isArray && (!variable.arraySize || variable.arraySize <= 0)) {
+    if (variable.isArray && (!variable.arraySize || variable.arraySize <= 0) && !variable.arraySizeStr) {
       return false;
     }
 

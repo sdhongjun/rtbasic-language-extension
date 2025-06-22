@@ -268,9 +268,13 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     }
                     break;
                 case 'global':
-                    varCode = `Global Dim ${variable.name}`;
+                    varCode = `Global ${variable.name}`;
                     if (variable.isArray) {
-                        varCode += `(${variable.arraySize})`;
+                        if (variable.arraySize) {
+                            varCode += `(${variable.arraySize})`;
+                        } else if (variable.arraySizeStr) {
+                            varCode += `(${variable.arraySizeStr})`;
+                        }
                     }
                     if (variable.type) {
                         varCode += ` As ${variable.type}`;
@@ -287,7 +291,11 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                 case 'local':
                     varCode = `Local ${variable.name}`;
                     if (variable.isArray) {
-                        varCode += `(${variable.arraySize})`;
+                        if (variable.arraySize) {
+                            varCode += `(${variable.arraySize})`;
+                        } else if (variable.arraySizeStr) {
+                            varCode += `(${variable.arraySizeStr})`;
+                        }
                     }
                     if (variable.type) {
                         varCode += ` As ${variable.type}`;
@@ -311,8 +319,13 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                     }
                     
                     if (variable.isArray) {
-                        varCode += `(${variable.arraySize})`;
+                        if (variable.arraySize) {
+                            varCode += `(${variable.arraySize})`;
+                        } else if (variable.arraySizeStr) {
+                            varCode += `(${variable.arraySizeStr})`;
+                        }
                     }
+
                     if (variable.type) {
                         varCode += ` As ${variable.type}`;
                     } else if (variable.structType) {
@@ -371,7 +384,11 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             }
             
             if (variable.isArray) {
-                content.appendText(`\nArray with size ${variable.arraySize}`);
+                if (variable.arraySize) {
+                    content.appendText(`\nArray with size ${variable.arraySize}`);
+                } else {
+                    content.appendText(`\nArray with size ${variable.arraySizeStr}`);
+                }
             }
             
             return new vscode.Hover(content, wordRange);
