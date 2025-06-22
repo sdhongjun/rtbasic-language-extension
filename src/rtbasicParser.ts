@@ -928,28 +928,24 @@ export class RtBasicParser {
     return undefined;
   }
 
-  /**
-   * 从变量声明字符串中提取所有变量信息
-   * 支持如下格式：
-   * - 单个变量: varName
-   * - 带类型的变量: varName as Type
-   * - 数组变量: varName(10)
-   * - 带类型的数组变量: varName(10) as Type
-   * - 多个变量: varName1, varName2, varName3 as Type
-   */
-  /**
-   * 从变量声明字符串中提取所有变量信息
-   * @param declarationStr 变量声明字符串，不包含开头的 global/dim/local 关键字
-   * @returns 变量声明数组，每个元素包含变量名、数组大小（可选）和类型（可选）
-   */
+  private getVariableValue(parser: RtBasicParser, varibaleName: string) : number {
+    const varInfo = parser.symbols.variables.find(v => v.name === varibaleName);
+    if (varInfo) {
+      return parseInt(varInfo.value ? varInfo.value : "0", 10);
+    }
+
+    return 0;
+  }
+
+
   private evaluateMathExpression(expr: string): number | undefined {
     if (!expr || !expr.trim()) {
       console.warn('警告: 空表达式');
       return undefined;
     }
 
-    // 移除所有空白字符
-    const cleanedExpr = expr.replace(/\s+/g, '');
+    // 移除所有空白字符与行尾注释
+    const cleanedExpr = expr.replace(/('|rem\s).*$/i, '').replace(/\s+/g, '');
 
     // 十六进制整数
     if (/\$[0-9a-fA-F]+$/i.test(cleanedExpr)) {
@@ -957,21 +953,10 @@ export class RtBasicParser {
       return parseInt(cleanedExpr.substring(1), 16);
     }
     
-    // 验证表达式只包含数字、运算符和括号
-    if (!/^[\d+\-*\/()]+$/.test(cleanedExpr)) {
-      console.warn(`警告: 表达式包含非法字符: ${cleanedExpr}`);
-      return undefined;
-    }
-
-    // 使用Function构造函数安全计算表达式
     try {
-      // eslint-disable-next-line no-new-func
-      const result = new Function(`return ${cleanedExpr}`)();
-      if (typeof result !== 'number' || isNaN(result)) {
-        console.warn(`警告: 无效的数值结果: ${result}`);
-        return undefined;
-      }
-      return Math.floor(result); // 确保返回整数
+      const varEval = new ExpressionParser(this, this.getVariableValue);
+      
+      return varEval.evaluate(cleanedExpr); // 确保返回整数
     } catch (e) {
       console.warn(`警告: 无法计算表达式 "${cleanedExpr}": ${
         e instanceof Error ? e.message : String(e)
@@ -1355,3 +1340,150 @@ export class RtBasicParser {
     return undefined;
   }
 }
+
+type VariableResolver = (parser: RtBasicParser, variable: string) => number;
+
+class ExpressionParser {
+  private tokens: string[] = [];
+  private index = 0;
+  private resolveVariable: VariableResolver;
+  private parser: RtBasicParser;
+
+  constructor(parser: RtBasicParser, variableResolver: VariableResolver) {
+    this.parser = parser;
+    this.resolveVariable = variableResolver;
+  }
+
+  public evaluate(expression: string): number {
+    this.tokens = this.tokenize(expression);
+    this.index = 0;
+    const result = this.parseExpression();
+
+    if (this.index < this.tokens.length) {
+      throw new Error(`Unexpected token: ${this.tokens[this.index]}`);
+    }
+
+    return result;
+  }
+
+  private tokenize(expression: string): string[] {
+    const tokens: string[] = [];
+    let current = '';
+    const expr = expression.replace(/\s+/g, '');
+
+    for (let i = 0; i < expr.length; i++) {
+      const char = expr[i];
+      
+      // 处理运算符和括号
+      if ('()+-*/'.includes(char)) {
+        if (current) {
+          tokens.push(current);
+          current = '';
+        }
+        tokens.push(char);
+        continue;
+      }
+      
+      // 处理变量名（字母开头，包含字母/数字/下划线）
+      if (/[a-zA-Z_]/.test(char)) {
+        current += char;
+        while (i + 1 < expr.length && /[\w]/.test(expr[i + 1])) {
+          i++;
+          current += expr[i];
+        }
+        tokens.push(current);
+        current = '';
+        continue;
+      }
+      
+      // 处理整数
+      if (/[\d]/.test(char)) {
+        current += char;
+        // 继续读取连续的数字
+        while (i + 1 < expr.length && /[\d]/.test(expr[i + 1])) {
+          i++;
+          current += expr[i];
+        }
+        tokens.push(current);
+        current = '';
+        continue;
+      }
+      
+      throw new Error(`Invalid character: ${char}`);
+    }
+    
+    if (current) tokens.push(current);
+    return tokens;
+  }
+
+  private parseExpression(): number {
+    let left = this.parseTerm();
+    
+    while (this.index < this.tokens.length) {
+      const op = this.tokens[this.index];
+      if (op !== '+' && op !== '-') break;
+      
+      this.index++;
+      const right = this.parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+
+    if (typeof(left) === 'string') {
+        this.resolveVariable(this.parser, left);
+    }
+    
+    return left;
+  }
+
+  private parseTerm(): number {
+    let left = this.parseFactor();
+    
+    while (this.index < this.tokens.length) {
+      const op = this.tokens[this.index];
+      if (op !== '*' && op !== '/') break;
+      
+      this.index++;
+      const right = this.parseFactor();
+      if (op === '*' ) left *= right;
+      else {
+        if (right === 0) throw new Error('Division by zero');
+        // 整数除法，向下取整
+        left = Math.floor(left / right);
+      }
+    }
+    
+    return left;
+  }
+
+  private parseFactor(): number {
+    if (this.index >= this.tokens.length) {
+      throw new Error('Unexpected end of expression');
+    }
+
+    const token = this.tokens[this.index++];
+    
+    // 处理括号表达式
+    if (token === '(') {
+      const result = this.parseExpression();
+      if (this.index >= this.tokens.length || this.tokens[this.index++] !== ')') {
+        throw new Error('Missing closing parenthesis');
+      }
+      return result;
+    }
+    
+    // 处理一元负号
+    if (token === '-') {
+      return -this.parseFactor();
+    }
+    
+    // 处理整数
+    const num = parseInt(token, 10);
+    if (!isNaN(num)) {
+      return num;
+    }
+    
+    // 处理变量引用 - 使用回调函数获取值
+    return this.resolveVariable(this.parser, token);
+  }
+}
+

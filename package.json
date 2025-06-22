@@ -117,5 +117,7 @@
     "url": "https://github.com/rtbasic/rtbasic-language-extension/issues"
   },
   "homepage": "https://github.com/rtbasic/rtbasic-language-extension#readme",
-  "dependencies": {}
+  "dependencies": {
+    "yaml": "^2.8.0"
+  }
 }
