@@ -543,17 +543,36 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         // 检查内置函数
-        // 检查是否是ZINDEX_STRUCT内置函数
-        if (word === 'ZINDEX_STRUCT') {
-            const content = new vscode.MarkdownString()
-                .appendCodeblock('ZINDEX_STRUCT(structName, structPtr)', 'rtbasic')
-                .appendText('\n\n访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。')
-                .appendMarkdown('\n\n**参数:**\n')
-                .appendMarkdown('- `structName` : `String` - 结构体名称\n')
-                .appendMarkdown('- `structPtr` : `Long` - 结构体指针\n')
-                .appendMarkdown('\n**返回类型:** `Variant`\n')
-                .appendMarkdown('\n**示例:**\n')
-                .appendCodeblock('result = ZINDEX_STRUCT("MyStruct", ptr).memberName', 'rtbasic');
+        const builtinFunction = RtBasicParser.builtinFunctions.find(f => f.name === word);
+        if (builtinFunction) {
+             const params = builtinFunction.parameters.map(p => {
+                let paramStr = p.name;
+                if (p.type) {
+                    paramStr += ` As ${p.type}`;
+                }
+                if (p.optional) {
+                    paramStr += '?';
+                }
+                return paramStr;
+            }).join(', ');
+            
+            const content = new vscode.MarkdownString().appendCodeblock(
+              `Global ${builtinFunction.name}(${params})${
+                builtinFunction.returnType
+                  ? ` As ${builtinFunction.returnType}`
+                  : ""
+              }`,
+              "rtbasic"
+            );
+
+            if (builtinFunction.description) {
+              content.appendMarkdown(`\n${builtinFunction.description}`);
+            }
+            if (builtinFunction.example) {
+              content.appendCodeblock(
+                `\n\nExample:\n\n\`\`\`rtbasic\n${builtinFunction.example}\n\`\`\``, "rtbasic"
+              );
+            }
             
             return new vscode.Hover(content, wordRange);
         }

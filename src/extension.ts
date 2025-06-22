@@ -6,10 +6,7 @@ import { RtBasicHoverProvider } from './rtbasicHoverProvider';
 import { RtBasicDocumentFormatter } from './rtbasicFormatter';
 import { RtBasicDiagnosticProvider } from './rtbasicDiagnosticProvider';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
-import builtinFunctions from './builtinFunctions.json';
-
-// 将导入的JSON类型断言为RtBasicBuiltinFunctions
-const typedBuiltinFunctions = builtinFunctions as RtBasicBuiltinFunctions;
+import builtinFunctions from './builtinFunctions';
 
 export function activate(context: vscode.ExtensionContext) {
     // 创建解析器实例
@@ -24,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.registerTextDocumentContentProvider(builtinFuncScheme, {
             provideTextDocumentContent(uri: vscode.Uri): string {
                 const funcName = uri.path.split('/').pop();
-                const builtinFunc = typedBuiltinFunctions.functions.find(f => f.name === funcName);
+                const builtinFunc = builtinFunctions.functions.find(f => f.name === funcName);
                 
                 if (!builtinFunc) {
                     return '找不到内置函数的文档';

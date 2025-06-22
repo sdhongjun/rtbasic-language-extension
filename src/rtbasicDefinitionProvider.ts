@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
 import { RtBasicParser, RtBasicBuiltinFunctions } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
-import builtinFunctions from './builtinFunctions.json';
-
-// 将导入的JSON类型断言为RtBasicBuiltinFunctions
-const typedBuiltinFunctions = builtinFunctions as RtBasicBuiltinFunctions;
+import builtinFunctions from './builtinFunctions';
 
 export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
     private parser: RtBasicParser;
@@ -28,7 +25,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         const word = document.getText(wordRange);
         
         // 首先检查是否是内置函数
-        const builtinFunc = typedBuiltinFunctions.functions.find(f => f.name === word);
+        const builtinFunc = builtinFunctions.functions.find(f => f.name === word);
         if (builtinFunc) {
             // 为内置函数创建虚拟位置
             const uri = vscode.Uri.parse(`rtbasic-builtin:///builtin/${word}`);

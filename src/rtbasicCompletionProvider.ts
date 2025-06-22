@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
 import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock, RtBasicCFunction, RtBasicBuiltinFunction, RtBasicBuiltinFunctions } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
-import builtinFunctions from './builtinFunctions.json';
-
-// 将导入的JSON类型断言为RtBasicBuiltinFunctions
-const typedBuiltinFunctions = builtinFunctions as RtBasicBuiltinFunctions;
+import builtinFunctions from './builtinFunctions';
 
 export class RtBasicCompletionProvider implements vscode.CompletionItemProvider {
     private parser: RtBasicParser;
@@ -419,7 +416,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         });
 
         // 添加内置函数补全
-        completions.push(...typedBuiltinFunctions.functions.map(func => {
+        completions.push(...builtinFunctions.functions.map(func => {
             const item = new vscode.CompletionItem(func.name, vscode.CompletionItemKind.Function);
             item.detail = '(builtin function)';
             
@@ -617,20 +614,20 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
         const subName = subMatch[1];
         
         // 首先检查是否是内置函数
-        const builtinFunc = typedBuiltinFunctions.functions.find(f => f.name === subName);
+        const builtinFunc = builtinFunctions.functions.find((f) => f.name === subName);
         if (builtinFunc) {
             const signatureHelp = new vscode.SignatureHelp();
             
             // 创建内置函数签名信息
             const signature = new vscode.SignatureInformation(
-                `${builtinFunc.name}(${builtinFunc.parameters.map(p => 
+                `${builtinFunc.name}(${builtinFunc.parameters.map((p: any) =>
                     `${p.name}${p.optional ? '?' : ''}${p.type ? ` As ${p.type}` : ''}`
                 ).join(', ')})`,
                 new vscode.MarkdownString(builtinFunc.description)
             );
 
             // 为每个参数添加参数信息
-            signature.parameters = builtinFunc.parameters.map(param => {
+            signature.parameters = builtinFunc.parameters.map((param: any) => {
                 let paramLabel = param.name;
                 if (param.optional) {
                     paramLabel += '?';

@@ -93,7 +93,6 @@ export interface RtBasicSymbol {
   structures: RtBasicStructure[];
   controlBlocks: ControlBlock[];
   cFunctions: RtBasicCFunction[];
-  builtinFunctions: RtBasicBuiltinFunction[];
 }
 
 export class RtBasicParser {
@@ -160,11 +159,11 @@ export class RtBasicParser {
     subs: [],
     structures: [],
     controlBlocks: [],
-    cFunctions: [],
-    builtinFunctions: []
+    cFunctions: []
   };
 
   private constants = new Map<string, number>();
+  public static builtinFunctions: RtBasicBuiltinFunction[]= [];
 
   constructor() {
     this.reset();
@@ -177,32 +176,27 @@ export class RtBasicParser {
       subs: [],
       structures: [],
       controlBlocks: [],
-      cFunctions: [],
-      builtinFunctions: []
+      cFunctions: []
     };
     this.constants.clear();
   }
 
   private async loadBuiltinFunctions(): Promise<void> {
     try {
-      const fs = require('fs');
-      const path = require('path');
-      
-      // 获取内置函数定义文件的路径
-      const configPath = path.join(__dirname, 'builtinFunctions.json');
-      
-      // 读取并解析配置文件
-      const configContent = fs.readFileSync(configPath, 'utf8');
-      const config = JSON.parse(configContent) as RtBasicBuiltinFunctions;
+      if (RtBasicParser.builtinFunctions.length > 0)
+        return;
+
+      // 导入内置函数模块
+      const builtinFunctions = require('./builtinFunctions').default;
       
       // 更新内置函数列表
-      this.symbols.builtinFunctions = config.functions;
-      
-      console.log(`Loaded ${this.symbols.builtinFunctions.length} builtin functions`);
+      RtBasicParser.builtinFunctions = builtinFunctions.functions;
+
+      console.log(`Loaded ${RtBasicParser.builtinFunctions.length} builtin functions from YAML`);
     } catch (error) {
       console.error('Failed to load builtin functions:', error);
       // 确保即使加载失败也至少有ZINDEX_STRUCT函数
-      this.symbols.builtinFunctions = [{
+      RtBasicParser.builtinFunctions = [{
         name: 'ZINDEX_STRUCT',
         description: '访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。',
         parameters: [
@@ -956,6 +950,12 @@ export class RtBasicParser {
 
     // 移除所有空白字符
     const cleanedExpr = expr.replace(/\s+/g, '');
+
+    // 十六进制整数
+    if (/\$[0-9a-fA-F]+$/i.test(cleanedExpr)) {
+      // 如果是16进制整数，转换为10进制
+      return parseInt(cleanedExpr.substring(1), 16);
+    }
     
     // 验证表达式只包含数字、运算符和括号
     if (!/^[\d+\-*\/()]+$/.test(cleanedExpr)) {
