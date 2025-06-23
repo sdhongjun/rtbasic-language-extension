@@ -32,7 +32,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         if (dotMatch) {
             // 首先在当前文件中查找结构体
             const structName = dotMatch[1];
-            const localStructure = currentFileSymbols.structures.find(s => s.name === structName);
+            const localStructure = currentFileSymbols.structures.find(s => s.name.toLowerCase() === structName.toLowerCase());
             
             if (localStructure) {
                 return this.provideStructureMemberCompletions(structName, currentFileSymbols.structures);
@@ -47,7 +47,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         if (subMatch) {
             const subName = subMatch[1];
             // 首先在当前文件中查找Sub
-            const localSub = currentFileSymbols.subs.find(s => s.name === subName);
+            const localSub = currentFileSymbols.subs.find(s => s.name.toLowerCase() === subName.toLowerCase());
             
             if (localSub) {
                 return this.provideSubParameterCompletions(subName, currentFileSymbols.subs);
@@ -68,7 +68,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         structName: string,
         structures: RtBasicStructure[]
     ): vscode.CompletionItem[] {
-        const structure = structures.find(s => s.name === structName);
+        const structure = structures.find(s => s.name.toLowerCase() === structName.toLowerCase());
         if (!structure) {
             return [];
         }
@@ -95,7 +95,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         subName: string,
         subs: RtBasicSub[]
     ): vscode.CompletionItem[] {
-        const sub = subs.find(s => s.name === subName);
+        const sub = subs.find(s => s.name.toLowerCase() === subName.toLowerCase());
         if (!sub) {
             return [];
         }
@@ -496,7 +496,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         // 添加工作区中的结构体（排除当前文件中已有的结构体）
         mergedSymbols.structures.forEach((struct: RtBasicStructure) => {
             // 确保不与当前文件中的结构体重复
-            if (!currentFileSymbols.structures.some((s: RtBasicStructure) => s.name === struct.name)) {
+            if (!currentFileSymbols.structures.some((s: RtBasicStructure) => s.name.toLowerCase() === struct.name.toLowerCase())) {
                 const item = new vscode.CompletionItem(struct.name, vscode.CompletionItemKind.Struct);
                 item.detail = `(${struct.isGlobal ? 'global' : 'file'} structure) ${struct.name}`;
                 
@@ -614,7 +614,7 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
         const subName = subMatch[1];
         
         // 首先检查是否是内置函数
-        const builtinFunc = builtinFunctions.functions.find((f) => f.name === subName);
+        const builtinFunc = builtinFunctions.functions.find((f) => f.name.toLowerCase() === subName.toLowerCase());
         if (builtinFunc) {
             const signatureHelp = new vscode.SignatureHelp();
             
@@ -667,16 +667,16 @@ export class RtBasicSignatureHelpProvider implements vscode.SignatureHelpProvide
         }
         
         // 如果不是内置函数，继续查找Sub或C函数
-        let sub = currentFileSymbols.subs.find(s => s.name === subName && !s.isGlobal);
+        let sub = currentFileSymbols.subs.find(s => s.name.toLowerCase() === subName.toLowerCase() && !s.isGlobal);
         if (!sub) {
-            sub = mergedSymbols.subs.find(s => s.name === subName && s.isGlobal);
+            sub = mergedSymbols.subs.find(s => s.name.toLowerCase() === subName.toLowerCase() && s.isGlobal);
         }
         
         let cFunction = null;
         if (!sub) {
-            cFunction = currentFileSymbols.cFunctions?.find(f => f.name === subName);
+            cFunction = currentFileSymbols.cFunctions?.find(f => f.name.toLowerCase() === subName.toLowerCase());
             if (!cFunction && mergedSymbols.cFunctions) {
-                cFunction = mergedSymbols.cFunctions.find(f => f.name === subName);
+                cFunction = mergedSymbols.cFunctions.find(f => f.name.toLowerCase() === subName.toLowerCase());
             }
             if (!cFunction) {
                 return null;

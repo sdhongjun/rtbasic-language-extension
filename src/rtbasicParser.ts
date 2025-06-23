@@ -929,7 +929,7 @@ export class RtBasicParser {
   }
 
   private getVariableValue(parser: RtBasicParser, varibaleName: string) : number {
-    const varInfo = parser.symbols.variables.find(v => v.name === varibaleName);
+    const varInfo = parser.symbols.variables.find(v => v.name.toLowerCase() === varibaleName.toLowerCase());
     if (varInfo) {
       return parseInt(varInfo.value ? varInfo.value : "0", 10);
     }
@@ -1251,7 +1251,7 @@ export class RtBasicParser {
   public getConstantValue(name: string): string | undefined {
     // 在符号表中查找匹配的常量
     const constant = this.symbols.variables.find(v => 
-      v.name === name && v.isConst
+      v.name.toLowerCase() === name.toLowerCase() && v.isConst
     );
     
     return constant?.value;

@@ -87,17 +87,21 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
                     ].join('\n');
 
                     edits.push(vscode.TextEdit.replace(lineRange, newText));
-                    currentIndent = 1;
                     continue; // 跳过后续处理，避免重复修改
                 }
             }
 
             // 更新缩进级别
-            if (text.trim().toLowerCase().startsWith('end if') || 
-                text.trim().toLowerCase().startsWith('end sub') ||
-                text.trim().toLowerCase().startsWith('end function')) {
+            const lowerCaseText = text.trim().toLowerCase();
+            if (lowerCaseText.startsWith('end') ||
+                lowerCaseText.startsWith('end if') ||
+                lowerCaseText.startsWith('wend') ||
+                lowerCaseText.startsWith('next') ||
+                lowerCaseText.startsWith('end sub') ||
+                lowerCaseText.startsWith('end function')) {
+                // 减小缩进级别
                 currentIndent = Math.max(0, currentIndent - 1);
-            }
+            }      
             
             // 处理ElseIf-Then在同一行的情况
             else if (text.trim().toLowerCase().startsWith('elseif') && text.toLowerCase().includes('then')) {
@@ -121,17 +125,19 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
             }
 
             // 处理Else语句
-            else if (text.trim().toLowerCase().startsWith('else') && 
-                    !text.trim().toLowerCase().startsWith('elseif')) {
+            else if (lowerCaseText.startsWith('else') && 
+                    !lowerCaseText.startsWith('elseif')) {
                 // 移除前导空格，保持与If对齐
                 const trimmedText = text.trim();
                 edits.push(vscode.TextEdit.replace(lineRange, trimmedText));
+                currentIndent += 1;
             }
 
             // 处理普通行的缩进
             if (containingBlock && !text.trim().match(/^(If|ElseIf|Else|End If)/i)) {
                 const newText = indent.repeat(currentIndent) + text.trim();
                 edits.push(vscode.TextEdit.replace(lineRange, newText));
+                currentIndent += 1;
             }
 
             // 格式化多变量定义 - 只格式化关键字，不拆分行

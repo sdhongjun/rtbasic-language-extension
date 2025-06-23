@@ -93,7 +93,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             
             // 首先检查变量声明，获取结构体类型
             const variables = [...currentFileSymbols.variables, ...mergedSymbols.variables];
-            const structVar = variables.find(v => v.name === structName);
+            const structVar = variables.find(v => v.name.toLowerCase() === structName.toLowerCase());
             
             // 确定实际结构体名称
             let actualStructName = structName;
@@ -112,22 +112,22 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             }
             
             // 查找结构体定义
-            let structure = currentFileSymbols.structures.find(s => s.name === actualStructName);
+            let structure = currentFileSymbols.structures.find(s => s.name.toLowerCase() === actualStructName.toLowerCase());
             let member = null;
             let sourceFile = document.uri.fsPath;
             
             if (structure) {
-                member = structure.members.find(m => m.name === memberName);
+                member = structure.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
             } else {
                 // 如果当前文件中没有找到，则在全局符号中查找
-                structure = mergedSymbols.structures.find(s => s.name === actualStructName);
+                structure = mergedSymbols.structures.find(s => s.name.toLowerCase() === actualStructName.toLowerCase());
                 
                 if (structure) {
-                    member = structure.members.find(m => m.name === memberName);
+                    member = structure.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
                     
                     // 查找结构体的源文件
                     for (const [filePath, fileSymbols] of Object.entries(this.workspaceManager.getAllFileSymbols())) {
-                        const fileStruct = fileSymbols.structures.find(s => s.name === actualStructName);
+                        const fileStruct = fileSymbols.structures.find(s => s.name.toLowerCase() === actualStructName.toLowerCase());
                         if (fileStruct) {
                             sourceFile = filePath;
                             break;
@@ -181,7 +181,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
 
             // 找到第一个在当前位置之前定义的变量
             variable = blockVariables.find(v => 
-                v.name === word && 
+                v.name.toLowerCase() === word.toLowerCase() && 
                 v.range && 
                 (v.range.start.line < position.line || 
                 (v.range.start.line === position.line && v.range.start.character < position.character))
@@ -192,7 +192,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         if (!variable && context.subName) {
             const currentSub = currentFileSymbols.subs.find(s => s.name === context.subName);
             if (currentSub) {
-                const param = currentSub.parameters.find(p => p.name === word);
+                const param = currentSub.parameters.find(p => p.name.toLowerCase() === word.toLowerCase());
                 if (param) {
                     // 创建一个临时变量对象来表示函数参数
                     variable = {
@@ -211,7 +211,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         // 3. 如果没有找到，检查函数作用域的局部变量
         if (!variable && context.subName) {
             variable = currentFileSymbols.variables.find(v => 
-                v.name === word && 
+                v.name.toLowerCase() === word.toLowerCase() && 
                 v.scope === 'local' && 
                 v.parentSub === context.subName
             );
@@ -220,7 +220,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         // 3. 如果仍然没有找到，检查文件作用域变量
         if (!variable) {
             variable = currentFileSymbols.variables.find(v => 
-                v.name === word && v.scope === 'file'
+                v.name.toLowerCase() === word.toLowerCase() && v.scope === 'file'
             );
         }
 
@@ -228,13 +228,13 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         if (!variable) {
             // 先检查当前文件中的全局变量
             variable = currentFileSymbols.variables.find(v => 
-                v.name === word && v.scope === 'global'
+                v.name.toLowerCase() === word.toLowerCase() && v.scope === 'global'
             );
             
             // 如果当前文件中没有找到全局变量，则在合并的符号中查找
             if (!variable) {
                 variable = mergedSymbols.variables.find(v => 
-                    v.name === word && v.scope === 'global'
+                    v.name.toLowerCase().toLowerCase() === word && v.scope === 'global'
                 );
             }
         }
@@ -405,17 +405,17 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
 
         // 检查Sub
         // 首先检查当前文件中的非全局Sub
-        let sub = currentFileSymbols.subs.find(s => s.name === word && !s.isGlobal);
+        let sub = currentFileSymbols.subs.find(s => s.name.toLowerCase() === word.toLowerCase() && !s.isGlobal);
         let sourceFile = document.uri.fsPath;
         
         // 如果没有找到非全局Sub，则检查全局Sub
         if (!sub) {
             // 先检查当前文件中的全局Sub
-            sub = currentFileSymbols.subs.find(s => s.name === word && s.isGlobal);
+            sub = currentFileSymbols.subs.find(s => s.name.toLowerCase() === word.toLowerCase() && s.isGlobal);
             
             // 如果当前文件中没有找到全局Sub，则在合并的符号中查找
             if (!sub) {
-                sub = mergedSymbols.subs.find(s => s.name === word && s.isGlobal);
+                sub = mergedSymbols.subs.find(s => s.name.toLowerCase() === word.toLowerCase() && s.isGlobal);
                 
                 // 查找Sub的源文件
                 if (sub && sub.sourceFile) {
@@ -491,12 +491,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
 
         // 检查C函数
         // 首先在当前文件中查找C函数
-        let cFunction = currentFileSymbols.cFunctions.find(cf => cf.name === word);
+        let cFunction = currentFileSymbols.cFunctions.find(cf => cf.name.toLowerCase() === word.toLowerCase());
         sourceFile = document.uri.fsPath;
         
         // 如果当前文件中没有找到，则在全局符号中查找
         if (!cFunction) {
-            cFunction = mergedSymbols.cFunctions.find(cf => cf.name === word);
+            cFunction = mergedSymbols.cFunctions.find(cf => cf.name.toLowerCase() === word.toLowerCase());
             
             // 查找C函数的源文件
             if (cFunction && cFunction.sourceFile) {
@@ -543,7 +543,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         }
 
         // 检查内置函数
-        const builtinFunction = RtBasicParser.builtinFunctions.find(f => f.name === word);
+        const builtinFunction = RtBasicParser.builtinFunctions.find(f => f.name.toLowerCase() === word.toLowerCase());
         if (builtinFunction) {
              const params = builtinFunction.parameters.map(p => {
                 let paramStr = p.name;
@@ -579,12 +579,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
 
         // 检查结构体
         // 首先在当前文件中查找结构体
-        let struct = currentFileSymbols.structures.find(s => s.name === word);
+        let struct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === word.toLowerCase());
         sourceFile = document.uri.fsPath;
         
         // 如果当前文件中没有找到，则在全局符号中查找
         if (!struct) {
-            struct = mergedSymbols.structures.find(s => s.name === word);
+            struct = mergedSymbols.structures.find(s => s.name.toLowerCase() === word.toLowerCase());
             
             // 查找结构体的源文件
             if (struct && struct.sourceFile) {

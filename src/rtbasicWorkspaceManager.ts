@@ -150,19 +150,19 @@ export class RtBasicWorkspaceManager {
 
         // 添加其他文件的全局符号（避免重复）
         for (const variable of globalSymbols.variables) {
-            if (!mergedSymbols.variables.some(v => v.name === variable.name && v.scope === 'global')) {
+            if (!mergedSymbols.variables.some(v => v.name.toLowerCase() === variable.name.toLowerCase() && v.scope === 'global')) {
                 mergedSymbols.variables.push(variable);
             }
         }
 
         for (const sub of globalSymbols.subs) {
-            if (!mergedSymbols.subs.some(s => s.name === sub.name && s.isGlobal)) {
+            if (!mergedSymbols.subs.some(s => s.name.toLowerCase() === sub.name.toLowerCase() && s.isGlobal)) {
                 mergedSymbols.subs.push(sub);
             }
         }
 
         for (const structure of globalSymbols.structures) {
-            if (structure.isGlobal && !mergedSymbols.structures.some(s => s.name === structure.name)) {
+            if (structure.isGlobal && !mergedSymbols.structures.some(s => s.name.toLowerCase() === structure.name.toLowerCase())) {
                 mergedSymbols.structures.push(structure);
             }
         }
@@ -170,7 +170,7 @@ export class RtBasicWorkspaceManager {
         // 添加其他文件的C函数（避免重复）
         if (globalSymbols.cFunctions) {
             for (const cFunction of globalSymbols.cFunctions) {
-                if (!mergedSymbols.cFunctions.some(f => f.name === cFunction.name)) {
+                if (!mergedSymbols.cFunctions.some(f => f.name.toLowerCase() === cFunction.name.toLowerCase())) {
                     mergedSymbols.cFunctions.push(cFunction);
                 }
             }

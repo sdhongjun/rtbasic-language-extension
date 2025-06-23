@@ -25,7 +25,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         const word = document.getText(wordRange);
         
         // 首先检查是否是内置函数
-        const builtinFunc = builtinFunctions.functions.find(f => f.name === word);
+        const builtinFunc = builtinFunctions.functions.find(f => f.name.toLowerCase() === word.toLowerCase());
         if (builtinFunc) {
             // 为内置函数创建虚拟位置
             const uri = vscode.Uri.parse(`rtbasic-builtin:///builtin/${word}`);
@@ -50,7 +50,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         if (currentControlBlock) {
             // 在当前控制块中查找变量
             const blockVariable = currentFileSymbols.variables.find(v => 
-                v.name === word && 
+                v.name.toLowerCase() === word.toLowerCase() && 
                 v.scope === 'block' && 
                 v.parentSub === currentSub?.name &&
                 v.parentBlock === currentControlBlock
@@ -64,7 +64,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             let parentBlock = currentControlBlock.parentBlock;
             while (parentBlock) {
                 const parentBlockVariable = currentFileSymbols.variables.find(v => 
-                    v.name === word && 
+                    v.name.toLowerCase() === word.toLowerCase() && 
                     v.scope === 'block' && 
                     v.parentSub === currentSub?.name &&
                     v.parentBlock === parentBlock
@@ -80,9 +80,9 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         
         // 如果在控制块中没有找到，则查找函数参数
         if (currentSub) {
-            const sub = currentFileSymbols.subs.find(s => s.name === currentSub.name);
+            const sub = currentFileSymbols.subs.find(s => s.name.toLowerCase() === currentSub.name.toLowerCase());
             if (sub) {
-                const param = sub.parameters.find(p => p.name === word);
+                const param = sub.parameters.find(p => p.name.toLowerCase() === word.toLowerCase());
                 if (param) {
                     // 返回函数定义位置作为参数的定义位置
                     return new vscode.Location(document.uri, sub.range);
@@ -91,7 +91,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             
             // 查找函数级别的局部变量
             const localVariable = currentFileSymbols.variables.find(v => 
-                v.name === word && 
+                v.name.toLowerCase() === word.toLowerCase() && 
                 v.scope === 'local' && 
                 v.parentSub === currentSub.name
             );
@@ -103,7 +103,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         
         // 如果以上都没找到，则查找任何匹配的局部变量或块作用域变量
         const anyLocalVariable = currentFileSymbols.variables.find(v => 
-            v.name === word && (v.scope === 'local' || v.scope === 'block')
+            v.name.toLowerCase() === word.toLowerCase() && (v.scope === 'local' || v.scope === 'block')
         );
         
         if (anyLocalVariable) {
@@ -111,25 +111,25 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         }
         
         // 检查文件变量
-        const fileVariable = currentFileSymbols.variables.find(v => v.name === word && v.scope === 'file');
+        const fileVariable = currentFileSymbols.variables.find(v => v.name.toLowerCase() === word.toLowerCase() && v.scope === 'file');
         if (fileVariable) {
             return new vscode.Location(document.uri, fileVariable.range);
         }
         
         // 检查当前文件中的非全局Sub
-        const localSub = currentFileSymbols.subs.find(s => s.name === word && !s.isGlobal);
+        const localSub = currentFileSymbols.subs.find(s => s.name.toLowerCase() === word.toLowerCase() && !s.isGlobal);
         if (localSub) {
             return new vscode.Location(document.uri, localSub.range);
         }
         
         // 检查当前文件中的C函数
-        const localCFunc = currentFileSymbols.cFunctions.find(cf => cf.name === word);
+        const localCFunc = currentFileSymbols.cFunctions.find(cf => cf.name.toLowerCase() === word.toLowerCase());
         if (localCFunc) {
             return new vscode.Location(document.uri, localCFunc.range);
         }
         
         // 检查当前文件中的结构体
-        const localStruct = currentFileSymbols.structures.find(s => s.name === word);
+        const localStruct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === word.toLowerCase());
         if (localStruct) {
             return new vscode.Location(document.uri, localStruct.range);
         }
@@ -144,24 +144,24 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             const memberName = word;
             
             // 先在当前文件中查找结构体
-            const structure = currentFileSymbols.structures.find(s => s.name === structName);
+            const structure = currentFileSymbols.structures.find(s => s.name.toLowerCase() === structName.toLowerCase());
             if (structure) {
-                const member = structure.members.find(m => m.name === memberName);
+                const member = structure.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
                 if (member) {
                     return new vscode.Location(document.uri, member.range);
                 }
             }
             
             // 如果当前文件中没有找到，则在全局符号中查找
-            const globalStructure = mergedSymbols.structures.find(s => s.name === structName);
+            const globalStructure = mergedSymbols.structures.find(s => s.name.toLowerCase() === structName.toLowerCase());
             if (globalStructure) {
-                const member = globalStructure.members.find(m => m.name === memberName);
+                const member = globalStructure.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
                 if (member) {
                     // 找到了全局结构体的成员
                     for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
-                        const fileStruct = fileSymbols.structures.find(s => s.name === structName);
+                        const fileStruct = fileSymbols.structures.find(s => s.name.toLowerCase() === structName.toLowerCase());
                         if (fileStruct) {
-                            const fileMember = fileStruct.members.find(m => m.name === memberName);
+                            const fileMember = fileStruct.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
                             if (fileMember) {
                                 return new vscode.Location(vscode.Uri.file(filePath), fileMember.range);
                             }
@@ -174,11 +174,11 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         // 在所有文件中查找全局符号
         
         // 检查全局变量
-        const globalVariable = mergedSymbols.variables.find(v => v.name === word && v.scope === 'global');
+        const globalVariable = mergedSymbols.variables.find(v => v.name.toLowerCase() === word.toLowerCase() && v.scope === 'global');
         if (globalVariable) {
             // 如果是当前文件中的全局变量，直接返回
             const currentFileGlobalVar = currentFileSymbols.variables.find(
-                v => v.name === word && v.scope === 'global'
+                v => v.name.toLowerCase() === word.toLowerCase() && v.scope === 'global'
             );
             if (currentFileGlobalVar) {
                 return new vscode.Location(document.uri, currentFileGlobalVar.range);
@@ -187,7 +187,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             // 否则，在其他文件中查找
             for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
                 const fileVar = fileSymbols.variables.find(
-                    v => v.name === word && v.scope === 'global'
+                    v => v.name.toLowerCase() === word.toLowerCase() && v.scope === 'global'
                 );
                 if (fileVar) {
                     return new vscode.Location(vscode.Uri.file(filePath), fileVar.range);
@@ -196,11 +196,11 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         }
         
         // 检查全局Sub
-        const globalSub = mergedSymbols.subs.find(s => s.name === word && s.isGlobal);
+        const globalSub = mergedSymbols.subs.find(s => s.name.toLowerCase() === word.toLowerCase() && s.isGlobal);
         if (globalSub) {
             // 如果是当前文件中的全局Sub，直接返回
             const currentFileGlobalSub = currentFileSymbols.subs.find(
-                s => s.name === word && s.isGlobal
+                s => s.name.toLowerCase() === word.toLowerCase() && s.isGlobal
             );
             if (currentFileGlobalSub) {
                 return new vscode.Location(document.uri, currentFileGlobalSub.range);
@@ -209,7 +209,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             // 否则，在其他文件中查找
             for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
                 const fileSub = fileSymbols.subs.find(
-                    s => s.name === word && s.isGlobal
+                    s => s.name.toLowerCase() === word.toLowerCase() && s.isGlobal
                 );
                 if (fileSub) {
                     return new vscode.Location(vscode.Uri.file(filePath), fileSub.range);
@@ -218,11 +218,11 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         }
         
         // 检查C函数
-        const globalCFunc = mergedSymbols.cFunctions.find(cf => cf.name === word);
+        const globalCFunc = mergedSymbols.cFunctions.find(cf => cf.name.toLowerCase() === word.toLowerCase());
         if (globalCFunc) {
             // 如果是当前文件中的C函数，直接返回
             const currentFileCFunc = currentFileSymbols.cFunctions.find(
-                cf => cf.name === word
+                cf => cf.name.toLowerCase() === word.toLowerCase()
             );
             if (currentFileCFunc) {
                 return new vscode.Location(document.uri, currentFileCFunc.range);
@@ -231,7 +231,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
             // 否则，在其他文件中查找
             for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
                 const fileCFunc = fileSymbols.cFunctions.find(
-                    cf => cf.name === word
+                    cf => cf.name.toLowerCase() === word.toLowerCase()
                 );
                 if (fileCFunc) {
                     return new vscode.Location(vscode.Uri.file(filePath), fileCFunc.range);
