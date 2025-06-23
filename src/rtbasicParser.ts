@@ -984,7 +984,7 @@ export class RtBasicParser {
     
     for (const part of declarationStr.split(',')) {
       const trimmedPart = part.trim();
-      if (trimmedPart.includes(' as ')) {
+      if (/\bas\b/i.test(trimmedPart)) {
         // 遇到as类型声明，结束当前声明
         currentDecl += (currentDecl ? ', ' : '') + trimmedPart;
         declarations.push(currentDecl);
@@ -1010,7 +1010,7 @@ export class RtBasicParser {
     // 处理每个独立的变量声明
     for (const declaration of declarations) {
       // 匹配变量名、数组大小和类型
-      const match = declaration.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*([a-zA-Z0-9_]+)\s*\))?(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i);
+      const match = declaration.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*([a-zA-Z0-9_]+)\s*\))?(?:\s*as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i);
       
       if (match) {
         const [, name, arraySizeExpr, type] = match;

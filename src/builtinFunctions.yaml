@@ -11,7 +11,7 @@ functions:
     description: 轴加速度，单位为units/s<superscript>2</superscript>。
     parameters:
       - name: axis
-        type: Long
+        type: Integer
         description: 轴序号
     returnType: number
     example: |-
@@ -32,10 +32,10 @@ functions:
       ADDAX指令叠加的是脉冲个数，而不是设置的units单位。
     parameters:
       - name: srcaxis
-        type: Long
+        type: Integer
         description: 叠加的源轴号
       - name: imode
-        type: Long
+        type: Integer
         optional: true
         description: |-
           叠加模式，0: 缺省值, 单轴叠加兼容以前的直接脉冲个数叠加
@@ -51,16 +51,16 @@ functions:
     description: ADDAX指令所叠加轴的轴号，-1表示没有叠加。
     parameters:
       - name: axis
-        type: Long
+        type: Integer
         description: 轴号
-    returnType: Long
+    returnType: Integer
     example: |-
-      ADDAX(0) AXIS(1) '轴0的运动叠加到轴1
-      ?ADDAX_AXIS(1) '打印出轴1叠加的轴，结果, 0
+      ADDAX(0) AXIS(1)  '轴0的运动叠加到轴1
+      ?ADDAX_AXIS(1)    '打印出轴1叠加的轴，结果, 0
       ADDAX(-1) AXIS(1) '取消叠加
   - name: ADDRESS
     description: 控制器的所有串口的MODBUS协议站号 1- 255，缺省=1
-    returnType: Long
+    returnType: Integer
     example: |-
       ADDRESS = 2
       PRINT ADDRESS '打印出协议站号
@@ -76,12 +76,49 @@ functions:
       注意AIO映射编号要大于控制器自身最大的AIO编号，不能与控制器的编号重合。 
     parameters:
       - name: channel
-        type: Long
+        type: Integer
         description: 模拟输入通道号，0~127
-    returnType: Long
+    returnType: Integer
     example: |-
       result = AIN(0) '读取0通道的AD值
       a = AIN(1) * 10 / 4096 '通道的电压值
+  - name: ALM_IN
+    description: 驱动器告警输入编号，-1无效。
+    parameters:
+      - name: axisnum
+        description: 轴号
+        type: Integer
+      - returnType: Integer
+      - example: |-
+          BASE(0, 1)
+          ALM_IN = 10, 11   '将轴0告警信号定义到输入口10, 轴1定义到11
+          INVERT_IN(10, ON) '反转电平开启
+          INVERT_IN(11, ON) '反转电平开启
+  - name: AOUT
+    description: >-
+      模拟通道输出。
+      12位刻度值范围0~4095对应0~10V电压。
+      16位刻度值范围0~65536对应0~10V电压。
+    parameters:
+      - name: channel
+        type: Integer
+        description: 模拟输出通道号，0~63
+    returnType: Integer
+    example: |-
+      AOUT(1) = 0   '关闭输出DA通道1
+      AOUT(1) = 4095 'DA1口输出10V电压
+  - name: APP_PASS
+    description: |-
+      控制器应用密码。
+      下载ZAR包时可以选择校验这个密码，校验错误将不能下载。
+      LOCK后不能修改APP_PASS。
+      **APP_PASS采用不可逆算法加密，一旦忘记，将无法获知。**
+    parameters:
+      - name: pass
+        type: String
+        description: 字母或数字，“_”等少数特殊符号，总共不要超过16个字符，不能设置为变量或表达式，否则变量名等会被认为是密码。
+    example: |-
+      APP_PASS(ZMotion)
   - name: ZINDEX_STRUCT
     description: 访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。
     parameters:
@@ -90,7 +127,7 @@ functions:
         description: 结构体名称
         optional: false
       - name: structPtr
-        type: Long
+        type: Integer
         description: 结构体指针
         optional: false
     returnType: Variant
