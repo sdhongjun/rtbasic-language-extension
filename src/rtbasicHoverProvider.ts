@@ -771,7 +771,28 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             const fullPath = parts.join('.');
             content.appendMarkdown(`\n\nAccess path: ${fullPath}`);
             
-            content.appendMarkdown(`\n\n[Go to ${currentStructure.name} definition](command:editor.action.goToDeclaration)`);
+            // 创建一个可点击的链接，使用 editor.action.goToDeclaration 命令
+            const fileUri = vscode.Uri.file(memberSourceFile);
+            
+            // 获取结构体定义的位置
+            let position: vscode.Position;
+            if (currentStructure.range) {
+                position = new vscode.Position(currentStructure.range.start.line, currentStructure.range.start.character);
+            } else {
+                position = new vscode.Position(0, 0);
+            }
+            
+            // 创建命令参数，包含文件URI和位置信息
+            const args = [{
+                uri: fileUri,
+                range: new vscode.Range(position, position)
+            }];
+            
+            // 使用 editor.action.goToDeclaration 命令
+            content.appendMarkdown(`\n\n[Go to ${currentStructure.name} definition](command:editor.action.goToDeclaration?${encodeURIComponent(JSON.stringify(args))})`);
+            
+            // 设置允许命令链接
+            content.isTrusted = true;
             
             if (memberSourceFile !== document.uri.fsPath) {
                 content.appendText(`\nDefined in ${this.getRelativePath(memberSourceFile)}`);
