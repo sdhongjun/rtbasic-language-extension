@@ -139,7 +139,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             // 如果当前文件中没有找到全局变量，则在合并的符号中查找
             if (!variable) {
                 variable = mergedSymbols.variables.find(v => 
-                    v.name.toLowerCase().toLowerCase() === word && v.scope === 'global'
+                    v.name.toLowerCase().toLowerCase() === word.toLowerCase() && v.scope === 'global'
                 );
             }
         }

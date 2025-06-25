@@ -885,6 +885,19 @@ export class RtBasicParser {
 
       // 处理第一个变量（保持原有行为，只返回第一个变量）
       const firstVar = varDeclarations[0];
+      
+      // 检查变量的结构体类型
+      if (firstVar.type && scope === "global") {
+        // 在当前文件和全局符号中查找结构体
+        const structDef = this.symbols.structures.find(s => s.name.toLowerCase() === firstVar.type?.toLowerCase());
+        if (structDef && !structDef.isGlobal) {
+          // 如果找到了结构体定义，且不是全局作用域，则提升为全局作用域
+          structDef.isGlobal = true;
+          // 移除 parentSub，因为全局结构体不属于任何函数
+          //delete structDef.parentSub;
+        }
+      }
+      
       const variable = this.parseVariableDeclaration(
         firstVar,
         lineRange,
@@ -1482,4 +1495,3 @@ class ExpressionParser {
     return this.resolveVariable(this.parser, token);
   }
 }
-
