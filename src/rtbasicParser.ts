@@ -351,34 +351,30 @@ export class RtBasicParser {
       // 解析结构体成员
       else if (currentStructure && text.toLowerCase().startsWith("dim")) {
         const memberMatch = text.match(
-          /dim\s+([a-zA-Z_][a-zA-Z0-9_]*\s*(?:,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
+          /^dim\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*([a-zA-Z0-9_]+)\s*\))?(?:\s*as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
         );
         if (memberMatch) {
-          const memberNames = memberMatch[1]
-            .split(",")
-            .map((name) => name.trim());
-          const structType = memberMatch[2];
+          const varName = memberMatch[1];
+          const arraySize = memberMatch[2];
+          const structType = memberMatch[3];
 
-          memberNames.forEach((memberName) => {
-            const arrayMatch = memberName.match(/(\w+)\s*\((\d+)\)/);
-            if (arrayMatch) {
-              currentStructure?.members.push({
-                name: arrayMatch[1],
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: "file",
-                isArray: true,
-                arraySize: parseInt(arrayMatch[2]),
-                structType: structType,
-              });
-            } else {
-              currentStructure?.members.push({
-                name: memberName,
-                range: new vscode.Range(line.range.start, line.range.end),
-                scope: "file",
-                structType: structType,
-              });
-            }
-          });
+          if (arraySize) {
+            currentStructure?.members.push({
+              name: varName,
+              range: new vscode.Range(line.range.start, line.range.end),
+              scope: "file",
+              isArray: true,
+              arraySize: this.evaluateMathExpression(arraySize),
+              structType: structType,
+            });
+          } else {
+            currentStructure?.members.push({
+              name: varName,
+              range: new vscode.Range(line.range.start, line.range.end),
+              scope: "file",
+              structType: structType,
+            });
+          }
         }
       }
 
