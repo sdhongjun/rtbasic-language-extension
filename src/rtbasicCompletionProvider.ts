@@ -27,18 +27,63 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         // 获取合并了当前文件和工作区全局符号的符号表
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
 
-        // 检查是否在结构体成员访问
-        const dotMatch = beforeCursor.match(/(\w+)\.\w*$/);
+        // 检查是否在结构体成员访问（支持多级访问）
+        const dotMatch = beforeCursor.match(/((?:ZINDEX_STRUCT\(\s*(\w+)\s*,)|(?:\w+\.)*\w+)/i);
         if (dotMatch) {
-            // 首先在当前文件中查找结构体
-            const structName = dotMatch[1];
-            const localStructure = currentFileSymbols.structures.find(s => s.name.toLowerCase() === structName.toLowerCase());
+            const fullPath = dotMatch[1];
+            const pathParts = fullPath.split('.');
             
-            if (localStructure) {
-                return this.provideStructureMemberCompletions(structName, currentFileSymbols.structures);
-            } else {
-                // 如果当前文件中没有找到，则在全局符号中查找
-                return this.provideStructureMemberCompletions(structName, mergedSymbols.structures);
+            try {
+                // 1. 推断根变量类型
+                const rootVarName = pathParts[0];
+                let currentType = this.inferVariableType(rootVarName, currentFileSymbols, mergedSymbols);
+                if (!currentType) {
+                    currentType = dotMatch[2];
+
+                    if (!currentType) {
+                        console.log(`Root variable type not found: ${rootVarName}`);
+                        return [];
+                    }
+                }
+
+                // 2. 查找根结构体
+                let currentStruct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === currentType.toLowerCase()) ||
+                                   mergedSymbols.structures.find(s => s.name.toLowerCase() === currentType.toLowerCase());
+                if (!currentStruct) {
+                    console.log(`Root structure not found: ${currentType}`);
+                    return [];
+                }
+
+                // 3. 递归查找嵌套结构体成员
+                for (let i = 1; i < pathParts.length; i++) {
+                    const memberName = pathParts[i];
+                    const member: RtBasicVariable | undefined= currentStruct.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
+                    
+                    if (!member) {
+                        console.log(`Member not found: ${memberName} in structure ${currentStruct.name}`);
+                        return [];
+                    }
+                    
+                    if (!member.structType) {
+                        console.log(`Member is not a structure: ${memberName}`);
+                        return [];
+                    }
+                    
+                    // 更新当前结构体类型
+                    currentStruct = currentFileSymbols.structures.find(s => member.structType ? s.name.toLowerCase() === member.structType.toLowerCase() : false) ||
+                                   mergedSymbols.structures.find(s => member.structType ? s.name.toLowerCase() === member.structType.toLowerCase() : false);
+                    
+                    if (!currentStruct) {
+                        console.log(`Structure type not found: ${member.structType}`);
+                        return [];
+                    }
+                }
+                
+                // 4. 提供最终结构体的成员补全
+                return this.provideStructureMemberCompletions(currentStruct.name, [currentStruct]);
+            } catch (error) {
+                console.error('Error processing nested structure access:', error);
+                return [];
             }
         }
 
@@ -62,6 +107,28 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         
         // 提供所有可用符号的补全（包括当前文件的局部符号和全局符号）
         return this.provideSymbolCompletions(document, position, currentFileSymbols, mergedSymbols, currentContext.subName, currentContext.blockId);
+    }
+
+    private inferVariableType(
+        variableName: string,
+        currentFileSymbols: any,
+        mergedSymbols: any
+    ): string | undefined {
+        // 1. 查找变量定义
+        const variable = currentFileSymbols.variables.find((v: RtBasicVariable) => 
+            v.name.toLowerCase() === variableName.toLowerCase());
+        
+        if (!variable) {
+            // 如果在当前文件中没找到，检查全局变量
+            const globalVar = mergedSymbols.variables.find((v: RtBasicVariable) => 
+                v.name.toLowerCase() === variableName.toLowerCase() && v.scope === 'global');
+            if (!globalVar) {
+                return undefined;
+            }
+            return globalVar.structType || globalVar.type;
+        }
+        
+        return variable.structType || variable.type;
     }
 
     private provideStructureMemberCompletions(
