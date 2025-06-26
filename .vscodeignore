@@ -1,0 +1,8 @@
+.git/**
+.vscode/**
+*.bat
+插件打包与安装.txt
+.gitignore
+test/**
+examples
+src/*.ts

@@ -94,9 +94,11 @@
     "onLanguage:rtbasic",
     "onCommand:rtbasic.reloadSymbols"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "scripts": {
+    "build": "node build.js",
     "vscode:prepublish": "npm run compile",
+    "precompile": "node build.js",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts"

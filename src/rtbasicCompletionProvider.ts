@@ -47,8 +47,8 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
                 }
 
                 // 2. 查找根结构体
-                let currentStruct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === currentType.toLowerCase()) ||
-                                   mergedSymbols.structures.find(s => s.name.toLowerCase() === currentType.toLowerCase());
+                let currentStruct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === currentType?.toLowerCase()) ||
+                                   mergedSymbols.structures.find(s => s.name.toLowerCase() === currentType?.toLowerCase());
                 if (!currentStruct) {
                     console.log(`Root structure not found: ${currentType}`);
                     return [];
@@ -70,8 +70,8 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
                     }
                     
                     // 更新当前结构体类型
-                    currentStruct = currentFileSymbols.structures.find(s => member.structType ? s.name.toLowerCase() === member.structType.toLowerCase() : false) ||
-                                   mergedSymbols.structures.find(s => member.structType ? s.name.toLowerCase() === member.structType.toLowerCase() : false);
+                    currentStruct = currentFileSymbols.structures.find(s => member.structType ? s.name.toLowerCase() === member.structType.toLowerCase() : undefined) ||
+                                   mergedSymbols.structures.find(s => member.structType ? s.name.toLowerCase() === member.structType.toLowerCase() : undefined);
                     
                     if (!currentStruct) {
                         console.log(`Structure type not found: ${member.structType}`);

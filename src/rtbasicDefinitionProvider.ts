@@ -306,6 +306,8 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         // 首先尝试在当前文件中查找变量定义
         const variable = currentFileSymbols.variables.find(
             (v: any) => v.name.toLowerCase() === rootStructName.toLowerCase()
+        ) || mergedSymbols.variables.find(
+            (v: any) => v.name.toLowerCase() === rootStructName.toLowerCase()
         );
         
         if (variable && variable.structType){
