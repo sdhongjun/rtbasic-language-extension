@@ -5,4 +5,7 @@
 .gitignore
 test/**
 examples
-src/*.ts
+src
+build.js
+images/*.md
+

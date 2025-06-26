@@ -4,7 +4,7 @@ import { parse } from 'yaml';
 import { RtBasicBuiltinFunctions } from './rtbasicParser';
 
 // 读取 YAML 文件
-const yamlPath = path.join(__dirname, '..', 'src', 'builtinFunctions.yaml');
+const yamlPath = path.join(__dirname, 'builtinFunctions.yaml');
 const yamlContent = fs.readFileSync(yamlPath, 'utf8');
 
 // 解析 YAML 内容

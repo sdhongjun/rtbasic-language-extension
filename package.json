@@ -5,6 +5,7 @@
   "version": "0.0.2",
   "publisher": "rtbasic",
   "license": "MIT",
+  "icon": "images/icon.png",
   "engines": {
     "vscode": "^1.60.0"
   },
