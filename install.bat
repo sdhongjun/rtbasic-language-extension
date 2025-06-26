@@ -1,1 +1,1 @@
-code --install-extension ./rtbasic-language-extension-0.0.2.vsix
+code --install-extension ./rtbasic-language-extension-0.0.3.vsix

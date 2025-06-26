@@ -2,7 +2,7 @@
   "name": "rtbasic-language-extension",
   "displayName": "RtBasic Language Support",
   "description": "Language support for RtBasic with VB-like syntax, providing IntelliSense, code navigation, and more",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "rtbasic",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -97,7 +97,6 @@
   ],
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "node build.js",
     "vscode:prepublish": "npm run compile",
     "precompile": "node build.js",
     "compile": "tsc -p ./",

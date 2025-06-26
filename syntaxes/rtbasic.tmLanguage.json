@@ -6,6 +6,9 @@
             "include": "#comments"
         },
         {
+            "include": "#constants"
+        },
+        {
             "include": "#keywords"
         },
         {
@@ -25,6 +28,14 @@
         }
     ],
     "repository": {
+        "constants": {
+            "patterns": [
+                {
+                    "name": "constant.language.rtbasic",
+                    "match": "(?i)\\b(true|false|on|off)\\b"
+                }
+            ]
+        },
         "comments": {
             "patterns": [
                 {
