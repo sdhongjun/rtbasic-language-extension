@@ -119,6 +119,65 @@ functions:
         description: 字母或数字，“_”等少数特殊符号，总共不要超过16个字符，不能设置为变量或表达式，否则变量名等会被认为是密码。
     example: |-
       APP_PASS(ZMotion)
+
+  - name: VR
+    description: 掉电存储寄存器操作
+    parameters:
+      - name: addr
+        type: Integer
+        description: 寄存器地址
+    returnType: number
+    example: |-
+      VR(1) = 100 '设置VR寄存器1的值
+      aaa = VR(1) '读取
+
+  - name: VR_INT
+    description: 掉电整形存储器操作
+    parameters:
+      - name: addr
+        type: Integer
+        description: 寄存器地址
+    returnType: Integer
+    example: |-
+      VR_INT(0) = 10.58
+      aaa = VR_INT(0)
+      ?aaa
+      '打印出10, 仅保留整数部分
+
+  - name: VRSTRING
+    description: 掉电字符串存储器操作
+    parameters:
+      - name: addr
+        type: Integer
+        description: 寄存器地址
+      - name: chares
+        optional: true
+        type: Integer
+        description: 读取的字符总数
+    returnType: String
+    example: |-
+      在线命令输入
+      >> VRSTRING (0, 8) = "abc"       '保存字符串
+      >>PRINT  VRSTRING (0, 8)
+      输出：abc
+
+  - name: WAIT IDLE
+    description: 等待BASE轴运动完成，BASE轴运动未完成时，不执行后面的程序。
+    example: |-
+      例一
+      BASE(0,1)
+      MOVE(100,100)
+      WAIT IDLE '等待当前插补运动结束
+
+      例二
+      BASE(0,1)
+      MOVE(100,100)
+      BASE(2,3)
+      MOVE(200,200)
+      WAIT UNTIL  IDLE(0) AND IDLE(1) AND IDLE (2) AND IDLE(3)
+      '等待轴0，1，2，3停止
+      ?"运动完成"
+
   - name: ZINDEX_STRUCT
     description: 访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。
     parameters:

@@ -434,7 +434,38 @@ export class RtBasicParser {
       }
     }
 
+    // 处理全局结构体的成员类型
+    this.processGlobalStructureMembers();
+    
     return this.symbols;
+  }
+
+  /**
+   * 处理全局结构体的成员类型
+   * 如果结构体是全局作用域，自动将其成员变量类型为非全局结构体的设置为全局结构体
+   */
+  private processGlobalStructureMembers(): void {
+    // 遍历所有结构体
+    for (const structure of this.symbols.structures) {
+      // 只处理全局结构体
+      if (structure.isGlobal) {
+        // 遍历结构体的所有成员
+        for (const member of structure.members) {
+          // 检查成员是否有类型定义且不是全局结构体
+          if (member.structType) {
+            const memberStruct = this.symbols.structures.find(s => 
+              s.name === member.structType && !s.isGlobal
+            );
+            // 如果找到匹配的非全局结构体，将其设置为全局
+            if (memberStruct) {
+              memberStruct.isGlobal = true;
+              // 移除parentSub，因为全局结构体不属于任何函数
+              delete memberStruct.parentSub;
+            }
+          }
+        }
+      }
+    }
   }
 
   /**

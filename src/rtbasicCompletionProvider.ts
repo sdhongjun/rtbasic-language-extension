@@ -19,7 +19,15 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         completionContext: vscode.CompletionContext
     ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
         const lineText = document.lineAt(position.line).text;
-        const beforeCursor = lineText.substring(0, position.character);
+        let beforeCursor = lineText.substring(0, position.character);
+        const removeKeyReg = /(\+|-|\*|\/|=|,|(?:\s+(?:mod|and|xor|not)\s+))/ig;
+
+        const removeMatchs = [...beforeCursor.matchAll(removeKeyReg)];
+        if (removeMatchs.length) {
+            // 取最后一个匹配值
+            let matchWord = removeMatchs[removeMatchs.length - 1];
+            beforeCursor = beforeCursor.substring((matchWord.index||0) + matchWord.length);
+        }
 
         // 解析当前文档以获取所有符号
         const currentFileSymbols = this.parser.parse(document);
