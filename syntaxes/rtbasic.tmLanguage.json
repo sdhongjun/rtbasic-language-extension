@@ -1,262 +1,215 @@
 {
-    "name": "RtBasic",
-    "scopeName": "source.rtbasic",
-    "patterns": [
+  "name": "RtBasic",
+  "scopeName": "source.rtbasic",
+  "patterns": [
+    {
+      "match": "\\n",
+      "name": "meta.ending-space"
+    },
+    {
+      "include": "#round-brackets"
+    },
+    {
+      "begin": "^(?=\\t)",
+      "end": "(?=[^\\t])",
+      "name": "meta.leading-space",
+      "patterns": [
         {
-            "include": "#comments"
-        },
-        {
-            "include": "#constants"
-        },
-        {
-            "include": "#keywords"
-        },
-        {
-            "include": "#strings"
-        },
-        {
-            "include": "#variables"
-        },
-        {
-            "include": "#functions"
-        },
-        {
-            "include": "#structures"
-        },
-        {
-            "include": "#numbers"
+          "captures": {
+            "1": {
+              "name": "meta.odd-tab.tabs"
+            },
+            "2": {
+              "name": "meta.even-tab.tabs"
+            }
+          },
+          "match": "(\\t)(\\t)?"
         }
-    ],
-    "repository": {
-        "constants": {
-            "patterns": [
-                {
-                    "name": "constant.language.rtbasic",
-                    "match": "(?i)\\b(true|false|on|off)\\b"
-                }
-            ]
-        },
-        "comments": {
-            "patterns": [
-                {
-                    "name": "comment.line.apostrophe.rtbasic",
-                    "match": "'.*$"
-                },
-                {
-                    "name": "comment.block.rtbasic",
-                    "begin": "/\\*",
-                    "end": "\\*/"
-                }
-            ]
-        },
-        "keywords": {
-            "patterns": [
-                {
-                    "name": "keyword.control.conditional.rtbasic",
-                    "match": "(?i)\\b(If|Then|Else|ElseIf|End\\s*If)\\b"
-                },
-                {
-                    "name": "keyword.control.loop.rtbasic",
-                    "match": "(?i)\\b(For|To|Step|Next|While|Wend|Do|Loop|Until)\\b"
-                },
-                {
-                    "name": "keyword.control.flow.rtbasic",
-                    "match": "(?i)\\b(Exit|Continue|Return)\\b"
-                },
-                {
-                    "name": "keyword.control.select.rtbasic",
-                    "match": "(?i)\\b(Select\\s*Case|Case|End\\s*Select)\\b"
-                },
-                {
-                    "name": "keyword.other.rtbasic",
-                    "match": "(?i)\\b(Global|Dim|Local|Sub|Structure|End Sub|End Structure|As|DEFINE_CFUNC)\\b"
-                },
-                {
-                    "name": "storage.type.rtbasic",
-                    "match": "(?i)\\b(Integer|Long|Single|Double|String|Boolean|Date|Object|Variant)\\b"
-                }
-            ]
-        },
-        "strings": {
-            "patterns": [
-                {
-                    "name": "string.quoted.double.rtbasic",
-                    "begin": "\"",
-                    "end": "\"",
-                    "patterns": [
-                        {
-                            "name": "constant.character.escape.rtbasic",
-                            "match": "\\\\."
-                        }
-                    ]
-                }
-            ]
-        },
-        "variables": {
-            "patterns": [
-                {
-                    "name": "storage.modifier.file.rtbasic",
-                    "match": "(?i)\\b(Dim)\\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?(?:\\s*,\\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?)*)\\s*(?:\\s+(As)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
-                    "captures": {
-                        "1": { "name": "keyword.other.rtbasic" },
-                        "2": { "patterns": [
-                            {
-                                "match": "[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?",
-                                "captures": {
-                                    "0": { "name": "variable.other.file.rtbasic" }
-                                }
-                            }
-                        ]},
-                        "3": { "name": "keyword.other.rtbasic" },
-                        "4": { "name": "storage.type.rtbasic" }
-                    }
-                },
-                {
-                    "name": "storage.modifier.global.rtbasic",
-                    "match": "(?i)\\b(Global\\s+(?:Dim)?)\\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+(?:\\s*,\\s*\\d+)*\\s*\\))?(?:\\s*,\\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+(?:\\s*,\\s*\\d+)*\\s*\\))?)*)\\s*(?:\\s+(As)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
-                    "captures": {
-                        "1": { "name": "keyword.other.rtbasic" },
-                        "2": { "patterns": [
-                            {
-                                "match": "[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?",
-                                "captures": {
-                                    "0": { "name": "variable.other.global.rtbasic" }
-                                }
-                            }
-                        ]},
-                        "3": { "name": "keyword.other.rtbasic" },
-                        "4": { "name": "storage.type.rtbasic" }
-                    }
-                },
-                {
-                    "name": "storage.modifier.local.rtbasic",
-                    "match": "(?i)\\b(Local)\\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?(?:\\s*,\\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?)*)\\s*(?:\\s+(As)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
-                    "captures": {
-                        "1": { "name": "keyword.other.rtbasic" },
-                        "2": { "patterns": [
-                            {
-                                "match": "[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?",
-                                "captures": {
-                                    "0": { "name": "variable.other.local.rtbasic" }
-                                }
-                            }
-                        ]},
-                        "3": { "name": "keyword.other.rtbasic" },
-                        "4": { "name": "storage.type.rtbasic" }
-                    }
-                },
-                {
-                    "name": "storage.modifier.dim.rtbasic",
-                    "match": "(?i)\\b(Dim)\\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?(?:\\s*,\\s*[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?)*)\\s*(?:\\s+(As)\\s+([a-zA-Z_][a-zA-Z0-9_]*))?\\b",
-                    "captures": {
-                        "1": { "name": "keyword.other.rtbasic" },
-                        "2": { "patterns": [
-                            {
-                                "match": "[a-zA-Z_][a-zA-Z0-9_]*(?:\\s*\\(\\s*\\d+\\s*\\))?",
-                                "captures": {
-                                    "0": { "name": "variable.other.rtbasic" }
-                                }
-                            }
-                        ]},
-                        "3": { "name": "keyword.other.rtbasic" },
-                        "4": { "name": "storage.type.rtbasic" }
-                    }
-                }
-            ]
-        },
-        "functions": {
-            "patterns": [
-                {
-                    "name": "meta.function.cfunc.rtbasic",
-                    "match": "(?i)\\b(DEFINE_CFUNC)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s+([^;]+);",
-                    "captures": {
-                        "1": { "name": "keyword.other.rtbasic" },
-                        "2": { "name": "entity.name.function.rtbasic" },
-                        "3": { "name": "meta.function.c.declaration.rtbasic" }
-                    }
-                },
-                {
-                    "name": "meta.function.global.rtbasic",
-                    "begin": "(?i)\\b(Global\\s+Sub|Global\\s+Function)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
-                    "end": "\\)(?:\\s+(?i)As\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
-                    "beginCaptures": {
-                        "1": { "name": "storage.type.function.rtbasic" },
-                        "2": { "name": "entity.name.function.rtbasic" }
-                    },
-                    "endCaptures": {
-                        "1": { "name": "storage.type.rtbasic" }
-                    },
-                    "patterns": [
-                        {
-                            "include": "#parameters"
-                        }
-                    ]
-                },
-                {
-                    "name": "meta.function.rtbasic",
-                    "begin": "(?i)\\b(Sub|Function)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
-                    "end": "\\)(?:\\s+(?i)As\\s+([a-zA-Z_][a-zA-Z0-9_]*))?",
-                    "beginCaptures": {
-                        "1": { "name": "storage.type.function.rtbasic" },
-                        "2": { "name": "entity.name.function.rtbasic" }
-                    },
-                    "endCaptures": {
-                        "1": { "name": "storage.type.rtbasic" }
-                    },
-                    "patterns": [
-                        {
-                            "include": "#parameters"
-                        }
-                    ]
-                }
-            ]
-        },
-        "structures": {
-            "patterns": [
-                {
-                    "name": "meta.structure.rtbasic",
-                    "begin": "(?i)\\b(Global\\s+Structure)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-                    "end": "(?i)\\b(End\\s+Structure)\\b",
-                    "beginCaptures": {
-                        "1": { "name": "storage.type.structure.rtbasic" },
-                        "2": { "name": "entity.name.type.structure.rtbasic" }
-                    },
-                    "endCaptures": {
-                        "1": { "name": "storage.type.structure.rtbasic" }
-                    },
-                    "patterns": [
-                        {
-                            "include": "#variables"
-                        }
-                    ]
-                }
-            ]
-        },
-        "parameters": {
-            "patterns": [
-                {
-                    "name": "meta.parameter.rtbasic",
-                    "match": "(?i)\\b(ByRef|ByVal)?\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?:\\s*\\(\\s*\\))?\\s+(As)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-                    "captures": {
-                        "1": { "name": "storage.modifier.rtbasic" },
-                        "2": { "name": "variable.parameter.rtbasic" },
-                        "3": { "name": "keyword.other.rtbasic" },
-                        "4": { "name": "storage.type.rtbasic" }
-                    }
-                }
-            ]
-        },
-        "numbers": {
-            "patterns": [
-                {
-                    "name": "constant.numeric.decimal.rtbasic",
-                    "match": "\\b\\d+(\\.\\d+)?\\b"
-                },
-                {
-                    "name": "constant.numeric.hex.rtbasic",
-                    "match": "\\b&H[0-9A-Fa-f]+\\b"
-                }
-            ]
+      ]
+    },
+    {
+      "begin": "^(?= )",
+      "end": "(?=[^ ])",
+      "name": "meta.leading-space",
+      "patterns": [
+        {
+          "captures": {
+            "1": {
+              "name": "meta.odd-tab.spaces"
+            },
+            "2": {
+              "name": "meta.even-tab.spaces"
+            }
+          },
+          "match": "(  )(  )?"
         }
+      ]
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "storage.type.function.rtbasic"
+        },
+        "2": {
+          "name": "entity.name.function.rtbasic"
+        },
+        "3": {
+          "name": "punctuation.definition.parameters.rtbasic"
+        },
+        "4": {
+          "name": "variable.parameter.function.rtbasic"
+        },
+        "5": {
+          "name": "punctuation.definition.parameters.rtbasic"
+        }
+      },
+      "match": "^\\s*((?:global\\s+)?(?i:function|sub))\\s*([a-zA-Z_]\\w*)\\s*(\\()([^)]*)(\\)).*\\n?",
+      "name": "meta.function.rtbasic"
+    },
+    {
+      "begin": "(^[ \\t]+)?(?=')",
+      "beginCaptures": {
+        "1": {
+          "name": "punctuation.whitespace.comment.leading.rtbasic"
+        }
+      },
+      "end": "(?!\\G)",
+      "patterns": [
+        {
+          "begin": "'",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.rtbasic"
+            }
+          },
+          "end": "\\n",
+          "name": "comment.line.apostrophe.rtbasic"
+        }
+      ]
+    },
+    {
+      "match": "(?i:\\b(If|Then|Else|ElseIf|Else If|End If|While|Wend|For|To|Each|Case|Select|End Select|Return|Continue|Do|Until|Loop|Next|With|Exit Do|Exit For|Exit Function|Exit Property|Exit Sub|IIf|Using)\\b)",
+      "name": "keyword.control.rtbasic"
+    },
+    {
+      "match": "(?i:\\b(Mod|And|Not|Or|Xor|As)\\b)",
+      "name": "keyword.operator.rtbasic"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "storage.type.rtbasic"
+        },
+        "2": {
+          "name": "variable.other.bfeac.rtbasic"
+        },
+        "3": {
+          "name": "meta.separator.comma.rtbasic"
+        }
+      },
+      "match": "(?i:(dim)\\s*(?:(\\b[a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?\\b)\\s*(,?)))",
+      "name": "variable.other.dim.rtbasic"
+    },
+    {
+      "match": "(?i:\\s*\\b(Call|Struct|Const|Dim|Redim|Function|Sub|Global\\s+Sub|End Sub|Set|Let|Get|Randomize|Option Explicit|On Error Resume Next|On Error GoTo|Imports|Inherits|Handles)\\b\\s*)",
+      "name": "storage.type.rtbasic"
+    },
+    {
+      "match": "(?i:\\b(Private|Public|Default|ByVal|Shared|Partial|Protected|Global)\\b)",
+      "name": "storage.modifier.rtbasic"
+    },
+    {
+      "match": "(?i:\\s*\\b(Empty|False|Nothing|Null|True|On|Off)\\b)",
+      "name": "constant.language.rtbasic"
+    },
+    {
+      "begin": "\"",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.rtbasic"
+        }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.rtbasic"
+        }
+      },
+      "name": "string.quoted.double.rtbasic",
+      "patterns": [
+        {
+          "match": "\"\"",
+          "name": "constant.character.escape.apostrophe.rtbasic"
+        }
+      ]
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.variable.rtbasic"
+        }
+      },
+      "match": "(\\$)[a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?\\b\\s*",
+      "name": "variable.other.rtbasic"
+    },
+    {
+      "match": "(?i:\\b(End|VR|VR_INT|VRSTRING|Base|MOVE|MOVEABS|Timer_Start|Int_Enable)\\b)",
+      "name": "support.function.rtbasic"
+    },
+    {
+      "match": "(?i:\\b(Global\\s+Sub\\s+OnTimer\\d|Global\\s+Sub\\s+Int_on\\d|Global\\s+Sub\\s+Int_off\\d|Global\\s+Sub\\s+OnPowerOff)\\b)",
+      "name": "support.function.event.rtbasic"
+    },
+    {
+      "match": "!|\\$|%|&&|\\*|--|-|\\+\\+|\\+|~|===|==|=|!==|!=|<<=|>>>=|<=|>>=|>=|<>|<|>|&|\\|\\||\\?:|\\*=|/=|%=|\\+=|-=|&=|\\^=|\\b(?i:of|instanceof|in|new|delete|typeof|void|isnot|andalso|orelse)\\b",
+      "name": "keyword.operator.rtbasic"
+    },
+    {
+      "match": "(?i:((?<=as )|(?<=new )|(?<=class )|(?<=of ))(\\b[a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?\\b))",
+      "name": "support.type.rtbasic"
+    },
+    {
+      "match": "(?i:\\b(Array|Add|Asc|Atn|CBool|CByte|CCur|CDate|CDbl|Chr|CInt|CLng|Conversions|Cos|CreateObject|CSng|CStr|Date|DateAdd|DateDiff|DatePart|DateSerial|DateValue|Day|Derived|Math|Escape|Eval|Exists|Exp|Filter|FormatCurrency|FormatDateTime|FormatNumber|FormatPercent|GetLocale|GetObject|GetRef|Hex|Hour|InputBox|InStr|InStrRev|Int|Fix|IsArray|IsDate|IsEmpty|IsNull|IsNumeric|IsObject|Item|Items|Join|Keys|LBound|LCase|Left|Len|LoadPicture|Log|LTrim|RTrim|Trim|Maths|Mid|Minute|Month|MonthName|MsgBox|Now|Oct|Remove|RemoveAll|Replace|RGB|Right|Rnd|Round|ScriptEngine|ScriptEngineBuildVersion|ScriptEngineMajorVersion|ScriptEngineMinorVersion|Second|SetLocale|Sgn|Sin|Space|Split|Sqr|StrComp|String|StrReverse|Tan|Time|Timer|TimeSerial|TimeValue|TypeName|UBound|UCase|Unescape|VarType|Weekday|WeekdayName|Year)\\b)",
+      "name": "support.function.rtbasic"
+    },
+    {
+      "match": "-?\\b((0(x|X)[0-9a-fA-F]*)|(([0-9]+\\.?[0-9]*)|(\\.[0-9]+))((e|E)(\\+|-)?[0-9]+)?)(L|l|UL|ul|u|U|F|f)?\\b",
+      "name": "constant.numeric.rtbasic"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "entity.name.function.rtbasic"
+        }
+      },
+      "match": "(?i:(\\b[a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?\\b)(?=\\(\\)?))",
+      "name": "support.function.rtbasic"
+    },
+    {
+      "match": "(?i:(((?<=\\+|=|-|\\&|\\\\|/|<|>|\\(|,|\\.)|(?<=using)|(?<=byval)|(?<=return)|(?<=each)|(?<=if))\\s*(?!(?i:instanceof|in|new|delete|typeof|void|isnot|andalso|orelse)\\b)\\b([a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?)\\b(?!(\\(|\\.))|\\b([a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?)\\b(?=\\s*(\\+|=|-|\\&|\\\\|/|<|>|\\(|\\)|\\.))))",
+      "name": "variable.other.rtbasic"
     }
+  ],
+  "repository": {
+    "round-brackets": {
+      "begin": "\\(",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.section.round-brackets.begin.rtbasic"
+        }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.round-brackets.end.rtbasic"
+        }
+      },
+      "name": "meta.round-brackets",
+      "patterns": [
+        {
+          "include": "source.rtbasic.vb.net"
+        }
+      ]
+    }
+  }
 }
