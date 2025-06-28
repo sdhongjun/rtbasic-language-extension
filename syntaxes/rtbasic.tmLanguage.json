@@ -107,15 +107,15 @@
           "name": "meta.separator.comma.rtbasic"
         }
       },
-      "match": "(?i:(dim)\\s*(?:(\\b[a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?\\b)\\s*(,?)))",
+      "match": "(?i:(dim|global|global\\s+dim|local)\\s+(?:(\\b[a-zA-Z_\\x7f-\\xff][a-zA-Z0-9_\\x7f-\\xff]*?\\b)\\s*(,?)))",
       "name": "variable.other.dim.rtbasic"
     },
     {
-      "match": "(?i:\\s*\\b(Call|Struct|Const|Dim|Redim|Function|Sub|Global\\s+Sub|End Sub|Set|Let|Get|Randomize|Option Explicit|On Error Resume Next|On Error GoTo|Imports|Inherits|Handles)\\b\\s*)",
+      "match": "(?i:\\s*\\b(Call|Structure|Const|Dim|Redim|Function|Sub|Global\\s+Sub|End\\s+Sub|End\\s+Structure|Wait\\s+idle|wait\\s+until|wait\\s+loaded|RUNTASK|RUN|Set|Let|Get|Randomize|Option Explicit|On Error Resume Next|On Error GoTo|Imports|Inherits|Handles)\\b\\s*)",
       "name": "storage.type.rtbasic"
     },
     {
-      "match": "(?i:\\b(Private|Public|Default|ByVal|Shared|Partial|Protected|Global)\\b)",
+      "match": "(?i:\\b(Private|Public|Default|ByVal|Shared|Partial|Protected|Global|Local)\\b)",
       "name": "storage.modifier.rtbasic"
     },
     {
@@ -153,7 +153,7 @@
       "name": "variable.other.rtbasic"
     },
     {
-      "match": "(?i:\\b(End|VR|VR_INT|VRSTRING|Base|MOVE|MOVEABS|Timer_Start|Int_Enable)\\b)",
+      "match": "(?i:\\b(End|VR|VR_INT|VRSTRING|Base|MOVE|MOVEABS|Timer_Start|Int_Enable|Define_CFunc|Units|ACCEL|DECEL|SPEED|MERGE|ATYPE|AXIS_ENABLE|AXIS_ADDRESS|LOCAL|DMADD|DMCPY|DMDEL|DMINS|DMSET)\\b)",
       "name": "support.function.rtbasic"
     },
     {

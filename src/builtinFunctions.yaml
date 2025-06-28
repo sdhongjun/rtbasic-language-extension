@@ -1,193 +1,439 @@
 functions:
-  - name: ABS
-    description: 返回参数的绝对值。
-    parameters:
-      - name: value
-        type: number
-        description: 数值
-    returnType: number
-    example: result = ABS(-10)
-  - name: ACCEL
-    description: 轴加速度，单位为units/s<superscript>2</superscript>。
-    parameters:
-      - name: axis
-        type: Integer
-        description: 轴序号
-    returnType: number
-    example: |-
-      result = ACCEL(0)
-      ACCEL(0) = 1000
-  - name: ACOS
-    description: 反余弦三角函数，返回值为弧度单位。
-    parameters:
-      - name: value
-        type: number
-        description: 数值
-    returnType: number
-    example: PRINT ACOS(0.5)'结果是1.04720=PI/3
-  - name: ADDAX
-    description: |-
-      运动叠加，把一个轴的运动叠加到另一个轴。
-      叠加后，被叠加轴不要用绝对运动指令调用运动。可能会导致位置不对。
-      ADDAX指令叠加的是脉冲个数，而不是设置的units单位。
-    parameters:
-      - name: srcaxis
-        type: Integer
-        description: 叠加的源轴号
-      - name: imode
-        type: Integer
-        optional: true
-        description: |-
-          叠加模式，0: 缺省值, 单轴叠加兼容以前的直接脉冲个数叠加
-          1: 单轴叠加，，支持齿轮比调整
-              ADDAX(scraxis, 1, radio)
-              radio: 比例值，支持浮点数，目标轴运动距离 = 源轴距离 * radio
-          2: 单轴叠加，支持比例调整
-      - name: param
-        type: Variant
-        optional: true
-        description: 不同模式参数
-  - name: ADDAX_AXIS
-    description: ADDAX指令所叠加轴的轴号，-1表示没有叠加。
-    parameters:
-      - name: axis
-        type: Integer
-        description: 轴号
-    returnType: Integer
-    example: |-
-      ADDAX(0) AXIS(1)  '轴0的运动叠加到轴1
-      ?ADDAX_AXIS(1)    '打印出轴1叠加的轴，结果, 0
-      ADDAX(-1) AXIS(1) '取消叠加
-  - name: ADDRESS
-    description: 控制器的所有串口的MODBUS协议站号 1- 255，缺省=1
-    returnType: Integer
-    example: |-
-      ADDRESS = 2
-      PRINT ADDRESS '打印出协议站号
-  - name: AFF_GAIN
-    description: |-
-      加速度反馈的前馈增益，非总线伺服不支持。
-      60B2 pdo = (轴每个周期脉冲速度变化) * AFF_GAIN。
-  - name: AIN
+- name: ABS
+  description: 返回参数的绝对值。
+  parameters:
+  - name: value
+    type: number
+    description: 数值
+  returnType: number
+  example: result = ABS(-10)
+- name: ACCEL
+  description: 轴加速度，单位为units/s<superscript>2</superscript>。
+  parameters:
+  - name: axis
+    type: Integer
+    description: 轴序号
+  returnType: number
+  example: >-
+    result = ACCEL(0)
+
+    ACCEL(0) = 1000
+- name: ACOS
+  description: 反余弦三角函数，返回值为弧度单位。
+  parameters:
+  - name: value
+    type: number
+    description: 数值
+  returnType: number
+  example: PRINT ACOS(0.5)'结果是1.04720=PI/3
+- name: ADDAX
+  description: >-
+    运动叠加，把一个轴的运动叠加到另一个轴。
+
+    叠加后，被叠加轴不要用绝对运动指令调用运动。可能会导致位置不对。
+
+    ADDAX指令叠加的是脉冲个数，而不是设置的units单位。
+  parameters:
+  - name: srcaxis
+    type: Integer
+    description: 叠加的源轴号
+  - name: imode
+    type: Integer
+    optional: true
     description: >-
-      读取模拟输入，返回AD转换模块的刻度值。 12位刻度值范围0~4095对应0~10V电压。 16位刻度值范围0~65536对应0~10V电压。
-      ZAIO扩展板的AD通道号与拨码有关，起始值为（8
-      +拨码组合值*8），ZMIO总线扩展AD使用NODE_AIO指令只能设置为8的倍数，详细查看硬件手册。
-      注意AIO映射编号要大于控制器自身最大的AIO编号，不能与控制器的编号重合。 
-    parameters:
-      - name: channel
-        type: Integer
-        description: 模拟输入通道号，0~127
-    returnType: Integer
-    example: |-
-      result = AIN(0) '读取0通道的AD值
-      a = AIN(1) * 10 / 4096 '通道的电压值
-  - name: ALM_IN
-    description: 驱动器告警输入编号，-1无效。
-    parameters:
-      - name: axisnum
-        description: 轴号
-        type: Integer
-      - returnType: Integer
-      - example: |-
-          BASE(0, 1)
-          ALM_IN = 10, 11   '将轴0告警信号定义到输入口10, 轴1定义到11
-          INVERT_IN(10, ON) '反转电平开启
-          INVERT_IN(11, ON) '反转电平开启
-  - name: AOUT
+      叠加模式，0: 缺省值, 单轴叠加兼容以前的直接脉冲个数叠加
+
+      1: 单轴叠加，，支持齿轮比调整
+          ADDAX(scraxis, 1, radio)
+          radio: 比例值，支持浮点数，目标轴运动距离 = 源轴距离 * radio
+      2: 单轴叠加，支持比例调整
+  - name: param
+    type: Variant
+    optional: true
+    description: 不同模式参数
+- name: ADDAX_AXIS
+  description: ADDAX指令所叠加轴的轴号，-1表示没有叠加。
+  parameters:
+  - name: axis
+    type: Integer
+    description: 轴号
+  returnType: Integer
+  example: >-
+    ADDAX(0) AXIS(1)  '轴0的运动叠加到轴1
+
+    ?ADDAX_AXIS(1)    '打印出轴1叠加的轴，结果, 0
+
+    ADDAX(-1) AXIS(1) '取消叠加
+- name: ADDRESS
+  description: 控制器的所有串口的MODBUS协议站号 1- 255，缺省=1
+  returnType: Integer
+  example: >-
+    ADDRESS = 2
+
+    PRINT ADDRESS '打印出协议站号
+- name: AFF_GAIN
+  description: >-
+    加速度反馈的前馈增益，非总线伺服不支持。
+
+    60B2 pdo = (轴每个周期脉冲速度变化) * AFF_GAIN。
+- name: AIN
+  description: >-
+    读取模拟输入，返回AD转换模块的刻度值。 
+
+    12位刻度值范围0~4095对应0~10V电压。
+
+    16位刻度值范围0~65536对应0~10V电压。
+
+
+    ZAIO扩展板的AD通道号与拨码有关，起始值为（8 +拨码组合值*8），ZMIO总线扩展AD使用NODE_AIO指令只能设置为8的倍数，详细查看硬件手册。
+
+
+    注意AIO映射编号要大于控制器自身最大的AIO编号，不能与控制器的编号重合。
+  parameters:
+  - name: channel
+    type: Integer
+    description: 模拟输入通道号，0~127
+  returnType: Integer
+  example: >-
+    result = AIN(0) '读取0通道的AD值
+
+    a = AIN(1) * 10 / 4096 '通道的电压值
+- name: ALM_IN
+  description: 驱动器告警输入编号，-1无效。
+  parameters:
+  - name: axisnum
+    description: 轴号
+    type: Integer
+  - returnType: Integer
+  - example: >-
+      BASE(0, 1)
+
+      ALM_IN = 10, 11   '将轴0告警信号定义到输入口10, 轴1定义到11
+
+      INVERT_IN(10, ON) '反转电平开启
+
+      INVERT_IN(11, ON) '反转电平开启
+- name: AOUT
+  description: >-
+    模拟通道输出。
+
+    12位刻度值范围0~4095对应0~10V电压。
+
+    16位刻度值范围0~65536对应0~10V电压。
+  parameters:
+  - name: channel
+    type: Integer
+    description: 模拟输出通道号，0~63
+  returnType: Integer
+  example: >-
+    AOUT(1) = 0   '关闭输出DA通道1
+
+    AOUT(1) = 4095 'DA1口输出10V电压
+- name: APP_PASS
+  description: >-
+    控制器应用密码。
+
+    下载ZAR包时可以选择校验这个密码，校验错误将不能下载。
+
+    LOCK后不能修改APP_PASS。
+
+    **APP_PASS采用不可逆算法加密，一旦忘记，将无法获知。**
+  parameters:
+  - name: pass
+    type: String
+    description: 字母或数字，“_”等少数特殊符号，总共不要超过16个字符，不能设置为变量或表达式，否则变量名等会被认为是密码。
+  example: APP_PASS(ZMotion)
+- name: Delay
+  description: 延时指定时间
+  parameters:
+  - name: delay_time
+    type: Integer
+    description: 延时毫秒数
+  example: DELAY(100) '延时100ms
+- name: PRINT
+  description: '打印输出函数, 别名: ?'
+  parameters:
+  - name: expression
     description: >-
-      模拟通道输出。
-      12位刻度值范围0~4095对应0~10V电压。
-      16位刻度值范围0~65536对应0~10V电压。
-    parameters:
-      - name: channel
-        type: Integer
-        description: 模拟输出通道号，0~63
-    returnType: Integer
-    example: |-
-      AOUT(1) = 0   '关闭输出DA通道1
-      AOUT(1) = 4095 'DA1口输出10V电压
-  - name: APP_PASS
-    description: |-
-      控制器应用密码。
-      下载ZAR包时可以选择校验这个密码，校验错误将不能下载。
-      LOCK后不能修改APP_PASS。
-      **APP_PASS采用不可逆算法加密，一旦忘记，将无法获知。**
-    parameters:
-      - name: pass
-        type: String
-        description: 字母或数字，“_”等少数特殊符号，总共不要超过16个字符，不能设置为变量或表达式，否则变量名等会被认为是密码。
-    example: |-
-      APP_PASS(ZMotion)
+      *SET：打印所有参数值
 
-  - name: VR
-    description: 掉电存储寄存器操作
-    parameters:
-      - name: addr
-        type: Integer
-        description: 寄存器地址
-    returnType: number
-    example: |-
-      VR(1) = 100 '设置VR寄存器1的值
-      aaa = VR(1) '读取
+      *TASK：打印任务信息
 
-  - name: VR_INT
-    description: 掉电整形存储器操作
-    parameters:
-      - name: addr
-        type: Integer
-        description: 寄存器地址
-    returnType: Integer
-    example: |-
-      VR_INT(0) = 10.58
-      aaa = VR_INT(0)
-      ?aaa
-      '打印出10, 仅保留整数部分
+      任务正常时只打印任务状态
 
-  - name: VRSTRING
-    description: 掉电字符串存储器操作
-    parameters:
-      - name: addr
-        type: Integer
-        description: 寄存器地址
-      - name: chares
-        optional: true
-        type: Integer
-        description: 读取的字符总数
-    returnType: String
-    example: |-
-      在线命令输入
-      >> VRSTRING (0, 8) = "abc"       '保存字符串
-      >>PRINT  VRSTRING (0, 8)
-      输出：abc
+      任务出错时还会打印出错误任务号，具体错误行
 
-  - name: WAIT IDLE
-    description: 等待BASE轴运动完成，BASE轴运动未完成时，不执行后面的程序。
-    example: |-
-      例一
-      BASE(0,1)
-      MOVE(100,100)
-      WAIT IDLE '等待当前插补运动结束
+      *MAX：打印所有规格参数
 
-      例二
-      BASE(0,1)
-      MOVE(100,100)
-      BASE(2,3)
-      MOVE(200,200)
-      WAIT UNTIL  IDLE(0) AND IDLE(1) AND IDLE (2) AND IDLE(3)
-      '等待轴0，1，2，3停止
-      ?"运动完成"
+      *FILE：打印程序文件信息
 
-  - name: ZINDEX_STRUCT
-    description: 访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。
-    parameters:
-      - name: structName
-        type: String
-        description: 结构体名称
-        optional: false
-      - name: structPtr
-        type: Integer
-        description: 结构体指针
-        optional: false
-    returnType: Variant
-    example: 'result = ZINDEX_STRUCT("MyStruct", ptr).memberName'
+      *SETCOM：打印当前串口的配置信息
+
+      *BASE：打印当前任务的BASE列表（140123以后版本支持）
+
+      *数组名：打印数组的所有元素，数组长度不能太长
+
+      *参数名：打印一个所有轴的单个参数
+
+      *ETHERCAT：打印EtherCAT总线连接设置状态
+
+      *RTEX：打印Rtex总线连接设置状态
+
+      *FRAME：打印机械手参数，需要161022及以上固件支持
+
+      *SLOT：打印出控制器槽位口信息（RTEX口，EtherCAT口）
+
+      *PORT：打印所有PORT通讯口
+
+      *OPEN：打印所有OPEN的端口信息
+  example: >-
+    >>PRINT 1+2
+
+    输出：3
+
+    >>PRINT *task     '打印所有任务状态
+
+    Task:0 Running. file:"hmi.bas" line:280:
+
+    Task:1 Stopped.
+
+    Task:2 Stopped.
+
+    Task:3 Stopped.
+
+    Task:4 Stopped.
+
+    Task:5 Stopped.
+
+    Task:6 Stopped.
+- name: RUN
+  description: 启动文件任务
+  parameters:
+  - name: filename
+    description: 程序文件名，bas文件可不加扩展名
+    type: String
+  - name: tasknum
+    optional: true
+    description: 任务号，缺省查找第一个有效的
+  example: RUN "aaa", 1     '启动任务1运行aaa.bas文件
+- name: RUNTASK
+  description: 启动SUB任务
+  parameters:
+  - name: tasknum
+    type: Integer
+    description: 任务号
+  - name: label
+    type: object
+    description: Sub名称或标签名称
+  example: >-
+    RUNTASK 1, taska       '启动任务1来跟踪打印位置
+
+    MOVE(1000,100)
+
+    MOVE(1000,100)
+
+    END
+
+
+    taska:       '循环打印位置
+
+    WHILE 1
+      PRINT *mpos
+      DELAY(1000)
+
+    WEND
+
+    END
+- name: Sub_IfPara
+  description: 判断Sub是否传入参数
+  parameters:
+  - name: address
+    description: 参数序号
+    type: Integer
+  returnType: Integer
+  example: >-
+    AAA(0,100)    '传入num1,num2
+
+    AAA(,100)     '只传入num2
+
+    END
+
+    SUB AAA(NUM1,NUM2)
+      IF SUB_IFPARA(0) THEN   '调用AAA时，判断num1是否传入
+          ?1      '传入打印1
+      ELSE
+          ?0
+      ENDIF
+    END SUB
+- name: Sub_Para
+  description: 传入参数查询
+  parameters:
+  - name: address
+    description: 参数序号
+    type: Integer
+  returnType: 参数值
+  example: >-
+    SUB AAA(NUM1,NUM2,NUM3)
+      ?SUB_PARA(0)   '调用AAA时，打印传递的第一个num1值
+      ?SUB_PARA(1)   '打印传递的第二个num2值
+      ?SUB_PARA(2)   '打印传递的第三个num3值
+    END SUB
+- name: VR
+  description: 掉电存储寄存器操作
+  parameters:
+  - name: addr
+    type: Integer
+    description: 寄存器地址
+  returnType: number
+  example: >-
+    VR(1) = 100 '设置VR寄存器1的值
+
+    aaa = VR(1) '读取
+- name: VRSTRING
+  description: 掉电字符串存储器操作
+  parameters:
+  - name: addr
+    type: Integer
+    description: 寄存器地址
+  - name: chares
+    optional: true
+    type: Integer
+    description: 读取的字符总数
+  returnType: String
+  example: >-
+    在线命令输入
+
+    >> VRSTRING (0, 8) = "abc"       '保存字符串
+
+    >>PRINT  VRSTRING (0, 8)
+
+    输出：abc
+- name: VR_INT
+  description: 掉电整形存储器操作
+  parameters:
+  - name: addr
+    type: Integer
+    description: 寄存器地址
+  returnType: Integer
+  example: >-
+    VR_INT(0) = 10.58
+
+    aaa = VR_INT(0)
+
+    ?aaa
+
+    '打印出10, 仅保留整数部分
+- name: WA
+  description: 延时指定时间
+  parameters:
+  - name: delay_time
+    type: Integer
+    description: 延时毫秒数
+  example: WA(100) '延时100ms
+- name: WAIT IDLE
+  description: 等待BASE轴运动完成，BASE轴运动未完成时，不执行后面的程序。
+  example: >-
+    例一
+
+    BASE(0,1)
+
+    MOVE(100,100)
+
+    WAIT IDLE '等待当前插补运动结束
+
+
+    例二
+
+    BASE(0,1)
+
+    MOVE(100,100)
+
+    BASE(2,3)
+
+    MOVE(200,200)
+
+    WAIT UNTIL  IDLE(0) AND IDLE(1) AND IDLE (2) AND IDLE(3)
+
+    '等待轴0，1，2，3停止
+
+    ?"运动完成"
+- name: ZINDEX_ARRAY
+  description: 通过索引指针来访问数组。
+  parameters:
+  - name: pointer
+    description: 通过ZINDEX_LABEL生成的指针索引
+    type: Integer
+  - name: index
+    description: 数组索引
+    type: Integer
+  returnType: 数组值
+  example: >-
+    DIM  arr1(100)     '定义数组
+
+    arr1(0,1)           '对数组0地址赋值1
+
+    Pointer = ZINDEX_LABEL(arr1)         '建立索引指针
+
+    PRINT  ZINDEX_ARRAY(Pointer) (0)   '访问数组，打印数组第一位数据，结果1
+- name: ZINDEX_CALL
+  description: 通过索引指针来调用SUB函数 `ZINDEX_CALL(zidnex) (subpara, …)`。
+  parameters:
+  - name: zindex
+    description: 通过ZINDEX_LABEL生成的索引指针
+    type: Integer
+  - name: subpara
+    description: sub的参数调用
+  returnType: Variant
+  example: >-
+    Pointer = ZINDEX_LABEL(sub1)   '建立索引指针
+
+    ZINDEX_CALL(Pointer) (2)       '调用函数
+
+    SUB  sub1(a)
+      PRINT a 
+    END SUB
+- name: ZINDEX_LABEL
+  description: 建立索引指针，便于后续调用指针内容。
+  parameters:
+  - name: object
+    description: 函数或变量名
+    type: object
+  returnType: Integer
+  example: >-
+    DIM  arr1(100)     '定义数组
+
+    arr1(0,1)           '对数组0地址赋值1
+
+    Pointer = ZINDEX_LABEL(arr1)         '建立索引指针
+
+    PRINT  ZINDEX_ARRAY(Pointer) (0)   '访问数组，打印数组第一位数据，结果1
+- name: ZINDEX_STRUCT
+  description: 访问结构体成员。用于通过结构体名称和结构体指针访问结构体成员。
+  parameters:
+  - name: structName
+    type: String
+    description: 结构体名称
+    optional: false
+  - name: structPtr
+    type: Integer
+    description: 结构体指针
+    optional: false
+  returnType: Variant
+  example: result = ZINDEX_STRUCT("MyStruct", ptr).memberName
+- name: ZINDEX_VAR
+  description: 通过索引指针来访问变量。
+  parameters:
+  - name: zindex
+    description: 通过ZINDEX_LABEL生成的索引指针
+    type: Integer
+  returnType: Variant
+  example: >-
+    global  gTestVar
+
+    global  VarAdd1
+
+    VarAdd1=ZINDEX_LABEL(gTestVar)
+
+    ZINDEX_VAR(VarAdd1) = 10
+
+    ?ZINDEX_VAR(VarAdd1)
