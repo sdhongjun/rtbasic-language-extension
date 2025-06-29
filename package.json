@@ -98,10 +98,11 @@
   "main": "./dist/extension.js",
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "precompile": "node build.js",
+    "precompile": "npm run copy-config",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "watch": "tsc -watch -p ./ && npm run copy-config",
+    "lint": "eslint src --ext ts",
+    "copy-config": "powershell -Command \"if (!(Test-Path dist/config)) { New-Item -ItemType Directory -Force -Path dist/config }; Copy-Item -Path src/config/*.yaml -Destination dist/config/ -Force; Copy-Item -Path src/builtinFunctions.yaml -Destination dist/ -Force\""
   },
   "devDependencies": {
     "@types/node": "14.x",

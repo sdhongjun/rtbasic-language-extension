@@ -1,195 +1,352 @@
 import * as vscode from 'vscode';
+import * as yaml from 'yaml';
+import * as fs from 'fs';
+import * as path from 'path';
 import { RtBasicParser, ControlBlock } from './rtbasicParser';
+
+interface LanguageConfig {
+    keywords: {
+        passcal_word: string[];
+        multi_word_map: { [key: string]: string };  // 添加多词关键字映射
+    };
+    built_in_functions: {
+        single_word: string[];
+        multi_word: string[];
+    };
+    formatting: {
+        default_indent: number;
+        convert_tabs_to_spaces: boolean;
+        max_line_length: number;
+        split_single_line_if: boolean;
+        preserve_empty_lines: boolean;
+        align_function_parameters: boolean;
+    };
+}
 
 export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditProvider {
     private parser: RtBasicParser;
-    
-    // 需要大写的关键字
-    private readonly uppercaseKeywords = [
-        'Global', 'Dim', 'Sub', 'End', 'Structure', 
-        'Then', 'Else', 'ElseIf', 'For', 'To', 'Next', 'While', 'Wend',
-        'Select', 'Case', 'Default', 'Return', 'Function',
-        // 组合关键字
-        'End Sub', 'End If', 'End Structure', 'End Function',
-        'Global Sub', 'ElseIf Then'
-    ];
-    
-    // 需要小写的关键字
-    private readonly lowercaseKeywords = [
-        'if', 'and', 'or', 'not', 'as', 'in'
-    ];
+    private config: LanguageConfig;
+    private indentStack: number[] = [];
 
     constructor(parser: RtBasicParser) {
         this.parser = parser;
+        this.config = this.loadConfig();
     }
-    
-    // 转换关键字大小写
-    private transformKeywordCase(text: string): string {
-        // 按长度排序关键字，确保先处理较长的组合关键字
-        const sortedUppercaseKeywords = [...this.uppercaseKeywords].sort((a, b) => b.length - a.length);
-        const sortedLowercaseKeywords = [...this.lowercaseKeywords].sort((a, b) => b.length - a.length);
+
+    // 加载YAML配置文件
+    private loadConfig(): LanguageConfig {
+        try {
+            const configPath = path.join(__dirname, 'config', 'language-config.yaml');
+            const fileContents = fs.readFileSync(configPath, 'utf8');
+            return yaml.parse(fileContents) as LanguageConfig;
+        } catch (error) {
+            console.error('Error loading language configuration:', error);
+            // 返回默认配置
+            return {
+                keywords: { passcal_word: [], multi_word_map: {} },
+                built_in_functions: { single_word: [], multi_word: [] },
+                formatting: {
+                    default_indent: 4,
+                    convert_tabs_to_spaces: true,
+                    max_line_length: 120,
+                    split_single_line_if: true,
+                    preserve_empty_lines: true,
+                    align_function_parameters: true
+                }
+            };
+        }
+    }
+
+    /**
+     * 保护字符串内容，避免被关键字替换影响
+     * @param text 要处理的文本
+     * @returns 处理后的文本和字符串映射
+     */
+    private protectStringContent(text: string): { processedText: string, stringMap: Map<string, string> } {
+        const stringMap = new Map<string, string>();
+        let stringCount = 0;
         
-        // 处理需要大写的关键字
-        sortedUppercaseKeywords.forEach(keyword => {
-            const regex = new RegExp(`\\b${keyword.toLowerCase()}\\b`, 'gi');
-            text = text.replace(regex, keyword);
+        // 使用正则表达式匹配双引号字符串
+        const stringRegex = /"([^"]*)"/g;
+        const processedText = text.replace(stringRegex, (match) => {
+            const placeholder = `__STRING_${stringCount}__`;
+            stringMap.set(placeholder, match);
+            stringCount++;
+            return placeholder;
         });
         
-        // 处理需要小写的关键字
-        sortedLowercaseKeywords.forEach(keyword => {
+        return { processedText, stringMap };
+    }
+    
+    /**
+     * 恢复字符串内容
+     * @param text 处理后的文本
+     * @param stringMap 字符串映射
+     * @returns 恢复字符串后的文本
+     */
+    private restoreStringContent(text: string, stringMap: Map<string, string>): string {
+        let restoredText = text;
+        stringMap.forEach((value, key) => {
+            restoredText = restoredText.replace(key, value);
+        });
+        return restoredText;
+    }
+
+    // 转换关键字大小写
+    private transformKeywordCase(text: string): string {
+        const { passcal_word, multi_word_map } = this.config.keywords;
+        
+        // 首先处理多关键字
+        Object.entries(multi_word_map || {}).forEach(([pattern, replacement]) => {
+            const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
+            text = text.replace(regex, replacement);
+        });
+
+
+        const sortedLowercase = [...passcal_word]
+            .filter(keyword => !keyword.includes(' ')) // 排除已处理的多关键字
+            .sort((a, b) => b.length - a.length);
+        
+        // 处理需要小写的单个关键字
+        sortedLowercase.forEach(keyword => {
             const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-            text = text.replace(regex, keyword.toLowerCase());
+            text = text.replace(regex, keyword);
+        });
+
+        // 处理单词内置函数
+        this.config.built_in_functions.single_word.forEach(func => {
+            const regex = new RegExp(`\\b${func}\\b`, 'gi');
+            text = text.replace(regex, func);
+        });
+
+        // 处理多词内置函数
+        this.config.built_in_functions.multi_word.forEach(func => {
+            const pattern = func.replace(/\s+/g, '\\s+');
+            const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
+            text = text.replace(regex, func);
         });
         
         return text;
     }
 
+    /**
+     * 计算缩进级别
+     * @param line 当前行
+     * @returns 计算后的缩进级别
+     */
+    private calculateIndentLevel(line: string): number {
+        // 保护字符串内容，避免错误匹配字符串中的关键字
+        const { processedText, stringMap } = this.protectStringContent(line);
+        const trimmedLine = processedText.trim().toLowerCase();
+        
+        // 检查是否是注释行
+        if (trimmedLine.startsWith("'")) {
+            return this.indentStack[this.indentStack.length - 1] || 0;
+        }
+        
+        // 减少缩进的关键字
+        const decreaseIndentRegex = /^(end\s+if|end\s+sub|end\s+function|end\s+struct|end\s+structure|wend|next)/i;
+        if (decreaseIndentRegex.test(trimmedLine)) {
+            // 如果是结束块，我们需要减少缩进级别
+            const currentIndent = this.indentStack.pop() || 0;
+            return Math.max(0, currentIndent - 1); // 确保缩进不会小于0
+        }
+
+        // Else 和 ElseIf 保持与 If 相同的缩进
+        if (/^(else|elseif|else\s+if)/i.test(trimmedLine)) {
+            // 保持与 If 相同的缩进级别
+            return Math.max(0, (this.indentStack[this.indentStack.length - 1] || 1) - 1);
+        }
+
+        // 增加缩进的关键字
+        const increaseIndentRegex = /^(if.*then|sub|function|while|for|struct|structure|global\s+struct|global\s+structure|global\s+sub|global\s+function)/i;
+        if (increaseIndentRegex.test(trimmedLine) && 
+            !trimmedLine.includes("'") && // 不在注释中
+            !(/^if.*then.*end\s*if/i.test(trimmedLine))) { // 不是单行if
+            const currentIndent = this.indentStack[this.indentStack.length - 1] || 0;
+            this.indentStack.push(currentIndent + 1);
+            return currentIndent;
+        }
+
+        // 处理 return 和 exit sub 等语句，它们不应该改变缩进栈
+        if (/^(return|exit\s+sub|exit\s+function)/i.test(trimmedLine)) {
+            // 保持当前缩进级别不变
+            return this.indentStack[this.indentStack.length - 1] || 0;
+        }
+
+        // 默认情况下，使用当前缩进级别
+        return this.indentStack[this.indentStack.length - 1] || 0;
+    }
+
+    // 处理制表符转换
+    private handleTabConversion(text: string, options: vscode.FormattingOptions): string {
+        if (this.config.formatting.convert_tabs_to_spaces) {
+            const tabSize = options.tabSize || this.config.formatting.default_indent;
+            return text.replace(/\t/g, ' '.repeat(tabSize));
+        }
+        return text;
+    }
+
+    /**
+     * 格式化函数参数列表
+     * @param line 要格式化的行
+     * @returns 格式化后的行
+     */
+    private formatFunctionParams(line: string): string {
+        // 匹配函数声明，包括 sub、function 和它们的 global 变体
+        const funcMatch = line.match(/^((?:GLOBAL\s+)?(?:SUB|FUNCTION)\s+\w+\s*\()([^)]*)\)(.*)/i);
+        if (!funcMatch) {
+            return line;
+        }
+
+        const [, prefix, params, suffix] = funcMatch;
+        if (!params.trim()) {
+            return prefix + ")" + suffix;
+        }
+
+        // 分割参数列表
+        const paramList = params.split(',').map(param => param.trim());
+        const formattedParams: string[] = [];
+
+        for (const param of paramList) {
+            // 匹配参数名称和类型
+            const paramMatch = param.match(/^(\w+)\s+AS\s+(\w+)$/i);
+            if (paramMatch) {
+                const [, varName, typeName] = paramMatch;
+                // 保持变量名原始大小写，类型名大写
+                formattedParams.push(`${varName} AS ${typeName.toUpperCase()}`);
+            } else {
+                // 如果参数格式不正确，保持原样
+                formattedParams.push(param);
+            }
+        }
+
+        // 根据参数数量决定格式
+        if (formattedParams.length > 1) {
+            // 多个参数时，每个参数之间添加逗号和空格
+            return prefix + formattedParams.join(", ") + ")" + suffix;
+        } else {
+            // 单个参数时，不需要逗号
+            return prefix + formattedParams[0] + ")" + suffix;
+        }
+    }
+
+    /**
+     * 格式化单行代码
+     * @param line 要格式化的行
+     * @param indentLevel 缩进级别
+     * @param options 格式化选项
+     * @returns 格式化后的行
+     */
+    private formatLine(line: string, indentLevel: number, options: vscode.FormattingOptions): string {
+        // 转换制表符
+        line = this.handleTabConversion(line.trim(), options);
+        
+        // 保护字符串内容
+        const { processedText, stringMap } = this.protectStringContent(line);
+        
+        // 应用关键字大小写转换
+        let formattedText = this.transformKeywordCase(processedText);
+
+        // 格式化函数参数列表
+        formattedText = this.formatFunctionParams(formattedText);
+        
+        // 恢复字符串内容
+        formattedText = this.restoreStringContent(formattedText, stringMap);
+
+        // 添加缩进
+        const indentSize = options.tabSize || this.config.formatting.default_indent;
+        const indentStr = options.insertSpaces ? ' '.repeat(indentSize) : '\t';
+        return indentStr.repeat(indentLevel) + formattedText;
+    }
+
+    /**
+     * 提供文档格式化编辑
+     * @param document 要格式化的文档
+     * @param options 格式化选项
+     * @param token 取消令牌
+     * @returns 文本编辑数组
+     */
     public provideDocumentFormattingEdits(
         document: vscode.TextDocument,
         options: vscode.FormattingOptions,
         token: vscode.CancellationToken
     ): vscode.TextEdit[] {
-        const edits: vscode.TextEdit[] = [];
-        const tabSize = options.tabSize || 4;
-        const insertSpaces = options.insertSpaces;
-        const indent = insertSpaces ? ' '.repeat(tabSize) : '\t';
+        try {
+            const edits: vscode.TextEdit[] = [];
+            this.indentStack = [0]; // 重置缩进栈
 
-        // 解析文档获取控制块信息
-        const { controlBlocks } = this.parser.parse(document);
-        const ifBlocks = controlBlocks.filter(block => block.type === 'If');
-        let currentIndent = 0;
+            // 解析文档获取控制块信息
+            const { controlBlocks } = this.parser.parse(document);
 
-        for (let i = 0; i < document.lineCount; i++) {
-            const line = document.lineAt(i);
-            let text = this.transformKeywordCase(line.text);
-            const lineRange = line.range;
-
-            // 检查当前行是否在If块中
-            const containingBlock = ifBlocks.find((block: ControlBlock) => 
-                block.range.start.line <= i && block.range.end.line >= i
-            );
-
-            // 处理If-Then在同一行的情况
-            if (text.trim().toLowerCase().startsWith('if') && text.toLowerCase().includes('then')) {
-                const thenIndex = text.toLowerCase().indexOf('then');
-                const afterThen = text.substring(thenIndex + 4).trim();
-                
-                if (afterThen && !afterThen.startsWith("'")) {
-                    // 格式化为多行If语句
-                    const ifCondition = text.substring(0, thenIndex + 4).trim();
-                    const statement = afterThen.split("'")[0].trim();
-                    const comment = afterThen.includes("'") ? " '" + afterThen.split("'")[1] : "";
-                    
-                    const newText = [
-                        ifCondition,
-                        indent + statement + comment,
-                        'End If'
-                    ].join('\n');
-
-                    edits.push(vscode.TextEdit.replace(lineRange, newText));
-                    continue; // 跳过后续处理，避免重复修改
+            for (let i = 0; i < document.lineCount; i++) {
+                // 检查是否取消
+                if (token.isCancellationRequested) {
+                    return [];
                 }
-            }
 
-            // 更新缩进级别
-            const lowerCaseText = text.trim().toLowerCase();
-            if (lowerCaseText.startsWith('end') ||
-                lowerCaseText.startsWith('end if') ||
-                lowerCaseText.startsWith('wend') ||
-                lowerCaseText.startsWith('next') ||
-                lowerCaseText.startsWith('end sub') ||
-                lowerCaseText.startsWith('end function')) {
-                // 减小缩进级别
-                currentIndent = Math.max(0, currentIndent - 1);
-            }      
-            
-            // 处理ElseIf-Then在同一行的情况
-            else if (text.trim().toLowerCase().startsWith('elseif') && text.toLowerCase().includes('then')) {
-                const thenIndex = text.toLowerCase().indexOf('then');
-                const afterThen = text.substring(thenIndex + 4).trim();
-                
-                if (afterThen && !afterThen.startsWith("'")) {
-                    // 格式化为多行ElseIf语句
-                    const elseIfCondition = text.substring(0, thenIndex + 4).trim();
-                    const commentIndex = afterThen.indexOf("'");
-                    const statement = commentIndex >= 0 ? afterThen.substring(0, commentIndex).trim() : afterThen.trim();
-                    const comment = commentIndex >= 0 ? ' ' + afterThen.substring(commentIndex) : "";
-                    
-                    const newText = [
-                        elseIfCondition,
-                        indent + statement + comment
-                    ].join('\n');
+                const line = document.lineAt(i);
+                const text = line.text;
 
-                    edits.push(vscode.TextEdit.replace(lineRange, newText));
+                // 处理空行
+                if (text.trim().length === 0) {
+                    // 根据配置决定是否保留空行
+                    const preserveEmptyLines = this.config.formatting.preserve_empty_lines !== false;
+                    if (preserveEmptyLines) {
+                        edits.push(vscode.TextEdit.replace(line.range, ''));
+                    }
+                    continue;
                 }
-            }
 
-            // 处理Else语句
-            else if (lowerCaseText.startsWith('else') && 
-                    !lowerCaseText.startsWith('elseif')) {
-                // 移除前导空格，保持与If对齐
-                const trimmedText = text.trim();
-                edits.push(vscode.TextEdit.replace(lineRange, trimmedText));
-                currentIndent += 1;
-            }
+                // 保留注释行，但应用适当的缩进
+                if (text.trim().startsWith("'")) {
+                    edits.push(vscode.TextEdit.replace(
+                        line.range,
+                        this.formatLine(text, this.indentStack[this.indentStack.length - 1], options)
+                    ));
+                    continue;
+                }
 
-            // 处理普通行的缩进
-            if (containingBlock && !text.trim().match(/^(If|ElseIf|Else|End If)/i)) {
-                const newText = indent.repeat(currentIndent) + text.trim();
-                edits.push(vscode.TextEdit.replace(lineRange, newText));
-                currentIndent += 1;
-            }
+                // 计算当前行的缩进级别
+                const indentLevel = this.calculateIndentLevel(text);
 
-            // 格式化多变量定义 - 只格式化关键字，不拆分行
-            if (text.trim().match(/^(Global\s+)?(Dim|Local)\s+.+,.+/i)) {
-                const parts = text.trim().split(/\s+/);
-                const scopeModifier = parts[0].toLowerCase();
-                const isGlobal = scopeModifier === 'global';
-                const isFile = !isGlobal;
-                const keyword = (isGlobal || isFile) ? this.transformKeywordCase(parts[1]) : this.transformKeywordCase(parts[0]);
-                
-                // 提取完整的变量声明部分
-                const keywordPos = text.toLowerCase().indexOf((isGlobal || isFile) ? parts[1].toLowerCase() : parts[0].toLowerCase());
-                const keywordLength = (isGlobal || isFile) ? parts[1].length : parts[0].length;
-                const beforeKeyword = text.substring(0, keywordPos);
-                const afterKeyword = text.substring(keywordPos + keywordLength);
-                
-                // 构建新的格式化行，保留原始的变量声明和空格
-                const formattedLine = beforeKeyword + keyword + afterKeyword;
-                
+                // 处理单行If-Then语句
+                // 只有当用户配置了拆分单行if语句时才执行此操作
+                const shouldSplitSingleLineIf = this.config.formatting.split_single_line_if !== false;
+                if (shouldSplitSingleLineIf && text.trim().toLowerCase().match(/^if.*then.*[^'\n]+$/i)) {
+                    // 保护字符串内容，避免错误拆分包含"then"的字符串
+                    const { processedText, stringMap } = this.protectStringContent(text);
+                    
+                    // 在处理过的文本中查找"then"
+                    if (processedText.toLowerCase().match(/\bthen\b/i)) {
+                        const parts = processedText.split(/\bthen\b/i);
+                        if (parts.length > 1 && !parts[1].trim().startsWith("'")) {
+                            // 恢复字符串内容
+                            const ifPart = this.restoreStringContent(parts[0], stringMap) + ' Then';
+                            const thenPart = this.restoreStringContent(parts[1], stringMap).trim();
+                            
+                            // 避免拆分已经包含End If的单行if语句
+                            if (!thenPart.toLowerCase().includes('end if')) {
+                                edits.push(vscode.TextEdit.replace(line.range, [
+                                    this.formatLine(ifPart, indentLevel, options),
+                                    this.formatLine(thenPart, indentLevel + 1, options),
+                                    this.formatLine('End If', indentLevel, options)
+                                ].join('\n')));
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                // 格式化当前行
+                const formattedLine = this.formatLine(text, indentLevel, options);
                 edits.push(vscode.TextEdit.replace(line.range, formattedLine));
             }
 
-            // 格式化结构体定义
-            if (text.trim().startsWith('Global Structure')) {
-                const structName = text.trim().substring('Global Structure'.length).trim();
-                edits.push(vscode.TextEdit.replace(line.range, `Global Structure ${structName}`));
-            }
-
-            // 格式化函数定义
-            const subMatch = text.trim().match(/^(Global\s+)?(Sub|Function)\s+(\w+)\s*\((.*)\)(\s+As\s+\w+)?/i);
-            if (subMatch) {
-                const [, globalModifier, subType, subName, params, returnType] = subMatch;
-                const formattedGlobal = globalModifier ? 'Global ' : '';
-                const formattedSubType = this.transformKeywordCase(subType);
-                const formattedParams = params.split(',')
-                    .map(param => param.trim())
-                    .join(', ');
-                const formattedReturnType = returnType ? returnType.trim() : '';
-                
-                const formattedLine = `${formattedGlobal}${formattedSubType} ${subName}(${formattedParams})${formattedReturnType}`;
-                edits.push(vscode.TextEdit.replace(line.range, formattedLine));
-            }
-
-            // 格式化 End Sub/Function
-            const endSubMatch = text.trim().match(/^End\s+(Sub|Function)$/i);
-            if (endSubMatch) {
-                const [, subType] = endSubMatch;
-                const formattedLine = `End ${this.transformKeywordCase(subType)}`;
-                edits.push(vscode.TextEdit.replace(line.range, formattedLine));
-            }
+            return edits;
+        } catch (error) {
+            console.error('Error formatting RTBasic document:', error);
+            return [];
         }
-
-        return edits;
     }
 }
