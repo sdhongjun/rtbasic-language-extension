@@ -1,0 +1,113 @@
+# RTBasic语言配置
+keywords:
+  passcal_word:
+    - If
+    - Then
+    - Else
+    - ElseIf
+    - End
+    - Sub
+    - Function
+    - Structure
+    - Global
+    - While
+    - For
+    - Next
+    - Wend
+    - Do
+    - Loop
+    - Select
+    - Case
+    - Return
+    - As
+    - Dim
+    - Local
+    - Const
+    - Shared
+    - Static
+    - ByRef
+    - ByVal
+    - Optional
+    - ParamArray
+    - Exit
+    - Continue
+    - Break
+    - "True"
+    - "False"
+    - "Null"
+    - Nothing
+
+  multi_word_map:
+    "end\\s+if": "End If"
+    "end\\s+sub": "End Sub"
+    "end\\s+function": "End Function"
+    "end\\s+structure": "End Structure"
+    "end\\s+select": "End Select"
+    "end\\s+case": "End Case"
+    "exit\\s+sub": "Exit Sub"
+    "exit\\s+for": "Exit For"
+    "exit\\s+function": "Exit Function"
+    "global\\s+sub": "Global Sub"
+    "global\\s+function": "Global Function"
+    "global\\s+structure": "Global Structure"
+    "else\\s+if": "ElseIf"
+
+built_in_functions:
+  single_word:
+    - Abs
+    - Asc
+    - Chr
+    - Cos
+    - Date
+    - Exp
+    - Fix
+    - Hex
+    - Int
+    - LCase
+    - Left
+    - Len
+    - Log
+    - LTrim
+    - Mid
+    - Now
+    - Right
+    - RTrim
+    - Sin
+    - Space
+    - Sqr
+    - Str
+    - Tan
+    - Time
+    - Trim
+    - UCase
+    - Val
+    - ZIndex_Array
+    - ZIndex_Call
+    - ZIndex_Label
+    - ZIndex_Struct
+    - ZIndex_Var
+    - Base
+    - Units
+    - Move
+    - MoveAbs
+    - Accel
+    - Decel
+    - Fwd_In
+    - Rev_In
+    - Datum_In
+    - Speed
+    - Invert_In
+    - Scan_Event
+
+  multi_word:
+    - Wait Idle
+    - Wait Until
+
+
+formatting:
+  default_indent: 4
+  convert_tabs_to_spaces: true
+  max_line_length: 120
+  split_single_line_if: true
+  preserve_empty_lines: true
+  align_function_parameters: true

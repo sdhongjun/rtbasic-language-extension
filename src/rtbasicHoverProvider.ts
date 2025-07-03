@@ -774,9 +774,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             // 创建一个可点击的链接，使用 editor.action.goToDeclaration 命令
             const fileUri = vscode.Uri.file(memberSourceFile);
             
-            // 获取结构体定义的位置
+            // 获取成员变量定义的位置
             let position: vscode.Position;
-            if (currentStructure.range) {
+            if (member.range) {
+                position = new vscode.Position(member.range.start.line, member.range.start.character);
+            } else if (currentStructure.range) {
+                // 如果成员没有range，回退到结构体的起始位置
                 position = new vscode.Position(currentStructure.range.start.line, currentStructure.range.start.character);
             } else {
                 position = new vscode.Position(0, 0);
