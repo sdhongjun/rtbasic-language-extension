@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicBuiltinFunctions } from './rtbasicParser';
+import { RtBasicParser } from './rtbasicParser';
 import { RtBasicDefinitionProvider } from './rtbasicDefinitionProvider';
 import { RtBasicCompletionProvider, RtBasicSignatureHelpProvider } from './rtbasicCompletionProvider';
 import { RtBasicHoverProvider } from './rtbasicHoverProvider';

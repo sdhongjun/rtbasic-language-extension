@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock, RtBasicCFunction, RtBasicBuiltinFunction, RtBasicBuiltinFunctions } from './rtbasicParser';
+import { RtBasicParser, RtBasicStructure, RtBasicSub, RtBasicVariable, ControlBlock, RtBasicCFunction } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
 import builtinFunctions from './builtinFunctions';
 
@@ -20,14 +20,6 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
     ): vscode.ProviderResult<vscode.CompletionItem[] | vscode.CompletionList> {
         const lineText = document.lineAt(position.line).text;
         let beforeCursor = lineText.substring(0, position.character);
-        const removeKeyReg = /(\+|-|\*|\/|=|,|(?:\s+(?:mod|and|xor|not)\s+))/ig;
-
-        const removeMatchs = [...beforeCursor.matchAll(removeKeyReg)];
-        if (removeMatchs.length) {
-            // 取最后一个匹配值
-            let matchWord = removeMatchs[removeMatchs.length - 1];
-            beforeCursor = beforeCursor.substring((matchWord.index||0) + matchWord.length);
-        }
 
         // 解析当前文档以获取所有符号
         const currentFileSymbols = this.parser.parse(document);
@@ -36,7 +28,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
 
         // 检查是否在结构体成员访问（支持多级访问）
-        const dotMatch = beforeCursor.match(/((?:ZINDEX_STRUCT\(\s*(\w+)\s*,)|(?:\w+\.)*\w+)/i);
+        const dotMatch = beforeCursor.match(/((?:ZINDEX_STRUCT\(\s*([a-zA-Z0-9_]+)\s*,.*)|[a-zA-Z0-9_]+(?:\(\s*[a-zA-Z0-9_]+\s*\))?)\.$/i);
         if (dotMatch) {
             const fullPath = dotMatch[1];
             const pathParts = fullPath.split('.');
@@ -65,6 +57,8 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
                 // 3. 递归查找嵌套结构体成员
                 for (let i = 1; i < pathParts.length; i++) {
                     const memberName = pathParts[i];
+                    if (memberName === '') break;
+
                     const member: RtBasicVariable | undefined= currentStruct.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
                     
                     if (!member) {
@@ -122,6 +116,13 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         currentFileSymbols: any,
         mergedSymbols: any
     ): string | undefined {
+        // 先尝试获取结构体数组变量名称
+        let arrayReg = /([a-zA-Z0-9_]+)\(.*\)/i;
+        let match = arrayReg.exec(variableName);
+        if (match) {
+            variableName = match[1];
+        }
+
         // 1. 查找变量定义
         const variable = currentFileSymbols.variables.find((v: RtBasicVariable) => 
             v.name.toLowerCase() === variableName.toLowerCase());
