@@ -19,38 +19,14 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         position: vscode.Position,
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Hover> {
-        // 获取当前行的文本和光标位置
-        const currentLine = document.lineAt(position.line).text;
-        const cursorPos = position.character;
-        
-        // 增强的单词解析逻辑
-        let start = cursorPos;
-        let end = cursorPos;
-        
-        // 向前查找单词开始位置，支持结构体成员访问
-        while (start > 0) {
-            const prevChar = currentLine.charAt(start - 1);
-            if (!/[\w.]/.test(prevChar)) break;
-            // 如果是点号，前面必须是有效字符
-            if (prevChar === '.' && start > 1 && !/[\w]/.test(currentLine.charAt(start - 2))) break;
-            start--;
-        }
-        
-        // 向后查找单词结束位置
-        while (end < currentLine.length) {
-            const nextChar = currentLine.charAt(end);
-            if (!/[\w]/.test(nextChar)) break;
-            end++;
-        }
-        
-        // 获取完整单词或表达式
-        let word = currentLine.substring(start, end).trim();
-        
-        const wordRange = new vscode.Range(
-            position.line, start,
-            position.line, end
-        );
-        
+        const wordRange = document.getWordRangeAtPosition(position) || new vscode.Range(0, 0, 0, 0);
+        const word: string = wordRange ? document.getText(wordRange) : "";
+        const line = document.lineAt(position).text.substring(0, wordRange.end.character);
+
+        if (word.trim() === "") return null;
+
+        if (!new RegExp(`^[^']*${word}`).test(line)) return null;
+
         if (!word) {
             return null;
         }
@@ -59,9 +35,21 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         const currentFileSymbols = this.parser.parse(document);
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
 
+        const regZIndexStru = new RegExp(`ZINDEX_STRUCT\\(\\s*([a-zA-Z0-9_]+)\\s*,\\s*[a-zA-Z0-9_]+\\s*\\)\\.(${word})$`, "i");
+        let matchZIndexStru = line.match(regZIndexStru);
+
+        if (matchZIndexStru) {
+            return this.handleStructMemberAccess([matchZIndexStru[1], matchZIndexStru[2]], document, currentFileSymbols, mergedSymbols, wordRange);
+        }
+
+        const regArrayStru = new RegExp(`([a-zA-Z0-9_]+)\\(\\s*[a-zA-Z0-9_]+\\s*\\)\\.(${word})$`, "i");
+        let matchArrayStru = line.match(regArrayStru);
+        if (matchArrayStru) {
+            return this.handleStructMemberAccess([matchArrayStru[1], matchArrayStru[2]], document, currentFileSymbols, mergedSymbols, wordRange)
+        }
+
         // 提取可能的结构体成员访问表达式
         const parts = word.split('.');
-        
         if (parts.length > 1) {
             // 处理多级结构体成员访问
             return this.handleStructMemberAccess(parts, document, currentFileSymbols, mergedSymbols, wordRange);
