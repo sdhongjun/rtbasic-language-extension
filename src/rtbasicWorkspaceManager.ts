@@ -178,4 +178,177 @@ export class RtBasicWorkspaceManager {
 
         return mergedSymbols;
     }
+
+    public makeStructAccessRegex(suffix: string) : RegExp {
+        // 匹配
+        // 数组访问: gVar(10).suffix
+        // ZINDEX_STRUCT访问: ZINDEX_STRUCT(type, address).suffix
+        // 多级数组访问: Type.strucMem.strucMem.suffix
+        return new RegExp(`((([a-z0-9_]+\\.)*[a-z0-9_]+|([a-z0-9_]+)\\(\\s*[a-z0-9_]+\\s*\\)|ZINDEX_STRUCT\\(([a-z0-9_]+),.*\\))\\.${suffix}$)`, 'ig');
+    }
+
+    /**
+     * 递归查找多级结构体成员的定义
+     * @param document 当前文档
+     * @param mixedStructParts 结构体成员路径（例如：['rect', 'topLeft', 'x']）
+     * @param currentFileSymbols 当前文件的符号
+     * @param mergedSymbols 合并的全局符号
+     * @returns 成员定义的位置
+     */
+    public findStructMemberDefinition(
+        document: vscode.TextDocument,
+        mixedStructParts: string,
+        currentFileSymbols: any,
+        mergedSymbols: any
+    ): vscode.Location | null {
+        const zindexReg = /ZINDEX_STRUCT\(([a-zA-Z0-9_]+),.*\)\.([a-zA-Z0-9_]+)/i;
+        let zIndexMatch = mixedStructParts.match(zindexReg);
+        // 查找结构体定义
+        let currentStructName = '';
+        let currentStructure = null;
+        let memberSourceFile = document.uri.fsPath;
+        let parts: string[] = [];
+
+        if (zIndexMatch) {
+            // 如果没有找到变量，则假设第一部分直接是结构体名称
+            currentStructName = zIndexMatch[1];
+            parts = [zIndexMatch[1], zIndexMatch[2]];
+
+            // 在当前文件中查找结构体
+            currentStructure = currentFileSymbols.structures.find(
+                (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+            );
+
+            // 如果当前文件中没有找到，则在全局符号中查找
+            if (!currentStructure) {
+                currentStructure = mergedSymbols.structures.find(
+                    (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                );
+
+                // 找到结构体定义所在的文件
+                if (currentStructure) {
+                    for (const [filePath, fileSymbols] of this['fileSymbols'].entries()) {
+                        const fileStruct = fileSymbols.structures.find(
+                            (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                        );
+                        if (fileStruct) {
+                            memberSourceFile = filePath;
+                            currentStructure = fileStruct;
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            const arrayAccessReg = /([a-z0-9_]+)\(.*\)\.([a-z0-9_]+)/i;
+            let arrayMatch = mixedStructParts.match(arrayAccessReg);
+            if (arrayMatch) {
+                parts = [arrayMatch[1], arrayMatch[2]];
+            } else {
+                parts = mixedStructParts.split('.');
+            }
+
+            const varName = parts[0];
+            // 首先尝试在当前文件中查找变量定义
+            const variable = currentFileSymbols.variables.find(
+                (v: any) => v.name.toLowerCase() === varName.toLowerCase()
+            ) || mergedSymbols.variables.find(
+                (v: any) => v.name.toLowerCase() === varName.toLowerCase()
+            );
+
+            if (variable && variable.structType) {
+                // 变量的类型是结构体名称
+                currentStructName = variable.structType;
+
+                // 在当前文件中查找结构体
+                currentStructure = currentFileSymbols.structures.find(
+                    (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                );
+
+                // 如果当前文件中没有找到，则在全局符号中查找
+                if (!currentStructure) {
+                    currentStructure = mergedSymbols.structures.find(
+                        (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                    );
+
+                    // 找到结构体定义所在的文件
+                    if (currentStructure) {
+                        for (const [filePath, fileSymbols] of this['fileSymbols'].entries()) {
+                            const fileStruct = fileSymbols.structures.find(
+                                (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                            );
+                            if (fileStruct) {
+                                memberSourceFile = filePath;
+                                currentStructure = fileStruct;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!currentStructure) {
+            return null;
+        }
+
+        // 从第二部分开始，逐级查找成员
+        for (let i = 1; i < parts.length; i++) {
+            const memberName = parts[i];
+            const member = currentStructure.members.find(
+                (m: any) => m.name.toLowerCase() === memberName.toLowerCase()
+            );
+
+            if (!member) {
+                return null;
+            }
+
+            // 如果是最后一个成员，返回其定义位置
+            if (i === parts.length - 1) {
+                return new vscode.Location(vscode.Uri.file(memberSourceFile), member.range);
+            }
+
+            // 如果不是最后一个成员，则继续查找下一级结构体
+            if (member.structType) {
+                currentStructName = member.structType;
+
+                // 在当前文件中查找结构体
+                let nextStructure = currentFileSymbols.structures.find(
+                    (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                );
+
+                // 如果当前文件中没有找到，则在全局符号中查找
+                if (!nextStructure) {
+                    nextStructure = mergedSymbols.structures.find(
+                        (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                    );
+
+                    // 找到结构体定义所在的文件
+                    if (nextStructure) {
+                        for (const [filePath, fileSymbols] of this['fileSymbols'].entries()) {
+                            const fileStruct = fileSymbols.structures.find(
+                                (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                            );
+                            if (fileStruct) {
+                                memberSourceFile = filePath;
+                                nextStructure = fileStruct;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!nextStructure) {
+                    return null;
+                }
+
+                currentStructure = nextStructure;
+            } else {
+                // 如果成员不是结构体类型，则无法继续查找
+                return null;
+            }
+        }
+
+        return null;
+    }
 }

@@ -42,7 +42,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             return this.handleStructMemberAccess([matchZIndexStru[1], matchZIndexStru[2]], document, currentFileSymbols, mergedSymbols, wordRange);
         }
 
-        const regArrayStru = new RegExp(`([a-zA-Z0-9_]+)\\(\\s*[a-zA-Z0-9_]+\\s*\\)\\.(${word})$`, "i");
+        const regArrayStru = new RegExp(`((?:[a-zA-Z0-0_]+\\.)*[a-zA-Z0-0_]+)\\.(${word})$`, "i");
         let matchArrayStru = line.match(regArrayStru);
         if (matchArrayStru) {
             return this.handleStructMemberAccess([matchArrayStru[1], matchArrayStru[2]], document, currentFileSymbols, mergedSymbols, wordRange)
