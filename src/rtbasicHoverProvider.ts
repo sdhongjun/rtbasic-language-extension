@@ -19,7 +19,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         position: vscode.Position,
         token: vscode.CancellationToken
     ): vscode.ProviderResult<vscode.Hover> {
-        const wordRange = document.getWordRangeAtPosition(position) || new vscode.Range(0, 0, 0, 0);
+        const wordRange : any = document.getWordRangeAtPosition(position);
         const word: string = wordRange ? document.getText(wordRange) : "";
         const line = document.lineAt(position).text.substring(0, wordRange.end.character);
 
@@ -34,25 +34,10 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
         // 获取当前文件的符号和合并的全局符号
         const currentFileSymbols = this.parser.parse(document);
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
-
-        const regZIndexStru = new RegExp(`ZINDEX_STRUCT\\(\\s*([a-zA-Z0-9_]+)\\s*,\\s*[a-zA-Z0-9_]+\\s*\\)\\.(${word})$`, "i");
-        let matchZIndexStru = line.match(regZIndexStru);
-
-        if (matchZIndexStru) {
-            return this.handleStructMemberAccess([matchZIndexStru[1], matchZIndexStru[2]], document, currentFileSymbols, mergedSymbols, wordRange);
-        }
-
-        const regArrayStru = new RegExp(`((?:[a-zA-Z0-0_]+\\.)*[a-zA-Z0-0_]+)\\.(${word})$`, "i");
-        let matchArrayStru = line.match(regArrayStru);
-        if (matchArrayStru) {
-            return this.handleStructMemberAccess([matchArrayStru[1], matchArrayStru[2]], document, currentFileSymbols, mergedSymbols, wordRange)
-        }
-
-        // 提取可能的结构体成员访问表达式
-        const parts = word.split('.');
-        if (parts.length > 1) {
-            // 处理多级结构体成员访问
-            return this.handleStructMemberAccess(parts, document, currentFileSymbols, mergedSymbols, wordRange);
+        const structAccessReg = this.workspaceManager.makeStructAccessRegex(word);
+        let matchStruct = line.match(structAccessReg);
+        if (matchStruct) {
+            return this.handleStructMemberAccess(matchStruct[0], document, currentFileSymbols, mergedSymbols, wordRange);
         }
 
         // 检查变量
@@ -638,64 +623,106 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
      * @returns 悬停信息
      */
     private handleStructMemberAccess(
-        parts: string[], 
+        mixedStructParts: string, 
         document: vscode.TextDocument, 
         currentFileSymbols: FileSymbols, 
         mergedSymbols: FileSymbols, 
         wordRange: vscode.Range
     ): vscode.Hover | null {
-        // 第一部分是结构体变量名或结构体类型名
-        const rootName = parts[0];
-        
-        // 首先检查变量声明，获取结构体类型
-        const variables = [...currentFileSymbols.variables, ...mergedSymbols.variables];
-        const structVar = variables.find(v => v.name.toLowerCase() === rootName.toLowerCase());
-        
-        // 确定实际结构体名称
-        let actualStructName = rootName;
-        
-        // 如果变量有明确的structType，使用它
-        if (structVar?.structType) {
-            actualStructName = structVar.structType;
-        } 
-        // 否则检查变量是否是结构体实例
-        else {
-            const structure = [...currentFileSymbols.structures, ...mergedSymbols.structures]
-                .find(s => s.name.toLowerCase() === rootName.toLowerCase());
-            if (structure) {
-                actualStructName = rootName;
-            }
-        }
-        
+        const zindexReg = /ZINDEX_STRUCT\(([a-zA-Z0-9_]+),.*\)\.([a-zA-Z0-9_]+)/i;
+        let zIndexMatch = mixedStructParts.match(zindexReg);
         // 查找结构体定义
-        let structure = currentFileSymbols.structures.find(s => s.name.toLowerCase() === actualStructName.toLowerCase());
-        let sourceFile = document.uri.fsPath;
-        
-        if (!structure) {
+        let currentStructName = '';
+        let currentStructure = null;
+        let memberSourceFile = document.uri.fsPath;
+        let parts: string[] = [];
+
+        if (zIndexMatch) {
+            // 如果没有找到变量，则假设第一部分直接是结构体名称
+            currentStructName = zIndexMatch[1];
+            parts = [zIndexMatch[1], zIndexMatch[2]];
+
+            // 在当前文件中查找结构体
+            currentStructure = currentFileSymbols.structures.find(
+                (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+            );
+
             // 如果当前文件中没有找到，则在全局符号中查找
-            structure = mergedSymbols.structures.find(s => s.name.toLowerCase() === actualStructName.toLowerCase());
-            
-            if (structure) {
-                // 查找结构体的源文件
-                for (const [filePath, fileSymbols] of Object.entries(this.workspaceManager.getAllFileSymbols())) {
-                    const fileStruct = fileSymbols.structures.find(s => s.name.toLowerCase() === actualStructName.toLowerCase());
-                    if (fileStruct) {
-                        sourceFile = filePath;
-                        break;
+            if (!currentStructure) {
+                currentStructure = mergedSymbols.structures.find(
+                    (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                );
+
+                // 找到结构体定义所在的文件
+                if (currentStructure) {
+                    for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
+                        const fileStruct = fileSymbols.structures.find(
+                            (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                        );
+                        if (fileStruct) {
+                            memberSourceFile = filePath;
+                            currentStructure = fileStruct;
+                            break;
+                        }
+                    }
+                }
+            }
+        } else {
+            const arrayAccessReg = /([a-z0-9_]+)\(.*\)\.([a-z0-9_]+)/i;
+            let arrayMatch = mixedStructParts.match(arrayAccessReg);
+            if (arrayMatch) {
+                parts = [arrayMatch[1], arrayMatch[2]];
+            } else {
+                parts = mixedStructParts.split('.');
+            }
+
+            const varName = parts[0];
+            // 首先尝试在当前文件中查找变量定义
+            const variable = currentFileSymbols.variables.find(
+                (v: any) => v.name.toLowerCase() === varName.toLowerCase()
+            ) || mergedSymbols.variables.find(
+                (v: any) => v.name.toLowerCase() === varName.toLowerCase()
+            );
+
+            if (variable && variable.structType) {
+                // 变量的类型是结构体名称
+                currentStructName = variable.structType;
+
+                // 在当前文件中查找结构体
+                currentStructure = currentFileSymbols.structures.find(
+                    (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                );
+
+                // 如果当前文件中没有找到，则在全局符号中查找
+                if (!currentStructure) {
+                    currentStructure = mergedSymbols.structures.find(
+                        (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                    );
+
+                    // 找到结构体定义所在的文件
+                    if (currentStructure) {
+                        for (const [filePath, fileSymbols] of this.workspaceManager['fileSymbols'].entries()) {
+                            const fileStruct = fileSymbols.structures.find(
+                                (s: any) => s.name.toLowerCase() === currentStructName.toLowerCase()
+                            );
+                            if (fileStruct) {
+                                memberSourceFile = filePath;
+                                currentStructure = fileStruct;
+                                break;
+                            }
+                        }
                     }
                 }
             }
         }
-        
-        if (!structure) {
+
+        if (!currentStructure) {
             return null;
         }
-        
+
         // 递归查找成员
-        let currentStructure = structure;
         let member = null;
         let memberPath = parts.slice(1);
-        let memberSourceFile = sourceFile;
         
         // 遍历成员路径
         for (let i = 0; i < memberPath.length; i++) {
@@ -705,7 +732,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
                 return null;
             }
             
-            member = currentStructure.members.find(m => m.name.toLowerCase() === memberName.toLowerCase());
+            member = currentStructure.members.find((m:any) => m.name.toLowerCase() === memberName.toLowerCase());
             
             if (!member) {
                 return null;
@@ -714,7 +741,7 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             // 如果不是最后一个成员且当前成员是结构体类型，则继续查找子成员
             if (i < memberPath.length - 1 && member.structType) {
                 // 查找成员类型对应的结构体
-                const subStructName = member.structType;
+                const subStructName : any = member.structType;
                 let subStruct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === subStructName.toLowerCase());
                 
                 if (!subStruct) {
@@ -762,25 +789,19 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             // 创建一个可点击的链接，使用 editor.action.goToDeclaration 命令
             const fileUri = vscode.Uri.file(memberSourceFile);
             
-            // 获取成员变量定义的位置
-            let position: vscode.Position;
-            if (member.range) {
-                position = new vscode.Position(member.range.start.line, member.range.start.character);
-            } else if (currentStructure.range) {
-                // 如果成员没有range，回退到结构体的起始位置
-                position = new vscode.Position(currentStructure.range.start.line, currentStructure.range.start.character);
-            } else {
-                position = new vscode.Position(0, 0);
-            }
-            
             // 创建命令参数，包含文件URI和位置信息
-            const args = [{
-                uri: fileUri,
-                range: new vscode.Range(position, position)
-            }];
-            
+            const args = {
+                uri: document.uri,
+                range: wordRange
+            };
+
+            let editor = vscode.window.activeTextEditor;
+            if (editor) {
+                editor.selections = [new vscode.Selection(wordRange.start, wordRange.start)];
+            }
+
             // 使用 editor.action.goToDeclaration 命令
-            content.appendMarkdown(`\n\n[Go to ${currentStructure.name} definition](command:editor.action.goToDeclaration?${encodeURIComponent(JSON.stringify(args))})`);
+            content.appendMarkdown(`\n\n[Go to ${member.name} definition](command:editor.action.goToDeclaration?${encodeURIComponent(JSON.stringify(args))})`);
             
             // 设置允许命令链接
             content.isTrusted = true;

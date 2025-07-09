@@ -23,7 +23,7 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         }
 
         const word = document.getText(wordRange);
-        
+
         // 首先检查是否是内置函数
         const builtinFunc = builtinFunctions.functions.find(f => f.name.toLowerCase() === word.toLowerCase());
         if (builtinFunc) {
@@ -36,9 +36,16 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         // 获取当前文件的符号和合并的全局符号
         const currentFileSymbols = this.parser.parse(document);
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
-        
-        // 首先在当前文件中查找局部符号
-        
+
+        // 检查结构体成员
+        const lineText = document.lineAt(position.line).text;
+        const structAccessReg = this.workspaceManager.makeStructAccessRegex(word);
+        const beforeCursor = lineText.substring(0, wordRange.start.character + word.length);
+        const structMatch = beforeCursor.match(structAccessReg);
+        if (structMatch) {
+            return this.workspaceManager.findStructMemberDefinition(document, structMatch[0], currentFileSymbols, mergedSymbols);
+        }
+
         // 检查局部变量和块作用域变量
         // 使用getCurrentContext方法获取当前位置的上下文信息
         const context = this.parser.getCurrentContext(document, position, currentFileSymbols.subs, currentFileSymbols.controlBlocks);
@@ -132,15 +139,6 @@ export class RtBasicDefinitionProvider implements vscode.DefinitionProvider {
         const localStruct = currentFileSymbols.structures.find(s => s.name.toLowerCase() === word.toLowerCase());
         if (localStruct) {
             return new vscode.Location(document.uri, localStruct.range);
-        }
-        
-        // 检查结构体成员
-        const lineText = document.lineAt(position.line).text;
-        const structAccessReg = this.workspaceManager.makeStructAccessRegex(word);
-        const beforeCursor = lineText.substring(0, wordRange.start.character + word.length);
-        const structMatch = beforeCursor.match(structAccessReg);
-        if (structMatch) {
-            return this.workspaceManager.findStructMemberDefinition(document, structMatch[0], currentFileSymbols, mergedSymbols);
         }
 
         // 在所有文件中查找全局符号
