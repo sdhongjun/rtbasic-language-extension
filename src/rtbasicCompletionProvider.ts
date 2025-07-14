@@ -28,7 +28,7 @@ export class RtBasicCompletionProvider implements vscode.CompletionItemProvider 
         const mergedSymbols = this.workspaceManager.getMergedSymbolsForFile(document.uri);
 
         // 检查是否在结构体成员访问（支持多级访问）
-        const dotMatch = beforeCursor.match(/((?:ZINDEX_STRUCT\(\s*([a-zA-Z0-9_]+)\s*,.*)|[a-zA-Z0-9_]+(?:\(\s*[a-zA-Z0-9_]+\s*\))?)\.$/i);
+        const dotMatch = beforeCursor.match(/((([a-z0-9_]+\.)*[a-z0-9_]+|([a-z0-9_]+)\([a-z0-9_]+\)|ZINDEX_STRUCT\(([a-z0-9]+),.*\))\.$)/i);
         if (dotMatch) {
             const fullPath = dotMatch[1];
             const pathParts = fullPath.split('.');

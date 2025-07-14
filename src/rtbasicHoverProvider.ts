@@ -792,16 +792,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             // 创建命令参数，包含文件URI和位置信息
             const args = {
                 uri: document.uri,
-                range: wordRange
+                start: wordRange.start,
+                end: wordRange.end,
             };
 
-            let editor = vscode.window.activeTextEditor;
-            if (editor) {
-                editor.selections = [new vscode.Selection(wordRange.start, wordRange.start)];
-            }
-
-            // 使用 editor.action.goToDeclaration 命令
-            content.appendMarkdown(`\n\n[Go to ${member.name} definition](command:editor.action.goToDeclaration?${encodeURIComponent(JSON.stringify(args))})`);
+            // 转到成员变量定义位置
+            content.appendMarkdown(`\n\n[Go to ${member.name} definition](command:rtbasic.goToDeclaration?${encodeURIComponent(JSON.stringify(args))} "转到定义")`);
             
             // 设置允许命令链接
             content.isTrusted = true;

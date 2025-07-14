@@ -260,6 +260,23 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
+    // 注册跳转到结构体成员定义位置
+    context.subscriptions.push(
+        vscode.commands.registerCommand('rtbasic.goToDeclaration', (args) => {
+            let param = {
+                uri: args.uri,
+                range: new vscode.Range(args.start, args.end)
+            };
+
+            let editor = vscode.window.activeTextEditor;
+            if (editor) {
+                editor.selections = [new vscode.Selection(param.range.start, param.range.end)];
+            }
+
+            vscode.commands.executeCommand('editor.action.goToDeclaration', param);
+        })
+    );
+
     // 注册诊断提供程序
     new RtBasicDiagnosticProvider(context, workspaceManager);
 }

@@ -256,7 +256,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
 
         // 添加缩进
         const indentSize = options.tabSize || this.config.formatting.default_indent;
-        const indentStr = options.insertSpaces ? ' '.repeat(indentSize) : '\t';
+        const indentStr = options.insertSpaces || this.config.formatting.convert_tabs_to_spaces ? ' '.repeat(indentSize) : '\t';
         return indentStr.repeat(indentLevel) + formattedText;
     }
 
