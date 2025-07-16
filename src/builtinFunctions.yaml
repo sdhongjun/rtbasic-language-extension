@@ -437,3 +437,236 @@ functions:
     ZINDEX_VAR(VarAdd1) = 10
 
     ?ZINDEX_VAR(VarAdd1)
+
+
+- name: DMADD
+  description: 对数组元素值进行批量增加。
+  parameters:
+  - name: arrayname
+    type: object
+    description: 数组名
+    optional: false
+  - name: pos
+    type: Integer
+    description: 起始的索引
+  - name: size 
+    type: Integer
+    description: 要修改的个数，注意加上pos不要超过数组大小
+  - name: data
+    type: number
+    description: 要增加的值
+  example: >-
+    DIM aaa(20)    '定义一个空间为20的数组
+
+    ?*aaa       '打印，全为0
+
+    DMADD aaa(10,5,2)  '从元素10开始，修改5个元素值+2
+
+    ?*aaa       '打印，其中10、11、12、13、14为2，其余为0
+
+    DMADD aaa(10,5,2)  '从元素10开始，修改5个元素值+2
+
+    ?*aaa       '打印，其中10、11、12、13、14为4，其余为0
+
+- name: DMCMP
+  description: >-
+    数组比较，数组内的元素的值逐个比较后返回结果。
+    比较得出返回值：
+
+    arr1> arr2，value=1；
+
+    arr1=arr2，value=0，比较范围内，元素值均相同；
+
+    arr1< arr2，value=-1；
+
+  parameters:
+  - name: arr1
+    description: 比较数组
+  - name: arr2
+    description: 比较数组
+  - name: size
+    description: 比较元素个数，不可超出比较数组的长度
+  returnType: Integer
+  example: >-
+    DIM  value,i
+    DIM  arr3(5), arr5(6)
+    FOR i = 0 TO 4
+            arr3(i) = i*10
+    NEXT
+
+    FOR i = 0 TO 5 
+            arr5(i) = i*100+1
+    NEXT 
+
+    value = DMCMP(arr3,arr5,5)
+    ?value
+    IF value = -1 THEN 
+            ?"小于"
+    ELSEIF  value = 1 Then 
+            ?"大于"
+    ELSE
+            ?"等于"
+    END IF
+
+- name: DMCPY
+  description: 数组拷贝，从数组Src拷贝到数组Des。
+  parameters:
+  - name:  arraydes(startpos)
+    description: 目标数组及起始位置
+  - name: arraysrc(startpos)
+    description: 源数组起始位置
+  - name: size
+    description: 拷贝的个数，超过最大值会自动缩减
+  example: >-
+    GLOBAL aa(6),bb(6)       '定义数组aa，bb
+
+    FOR i=0 TO 4    '赋值aa 0,1,2,3,4
+      aa(i)=i
+    NEXT
+
+    ?*aa            '打印数组所有元素
+    ?*bb
+
+    DMCPY aa(0), bb(0),6  '把数组bb的值赋值给数组aa
+
+    ?*aa            '打印数组复制后所有元素
+    ?*bb
+
+- name: DMDEL
+  description: 数组的链表操作；删除数组元素，删除后当前元素后面的所有元素向前移动。
+  parameters:
+  - name: arrayname
+    description: 数组名
+  - name: pos
+    description: 数组索引
+  example: >-
+    DIM aa(6)       '定义数组aa
+
+    FOR i=0 TO 4    '赋值0,1,2,3,4
+      aa(i)=i
+    NEXT
+
+    ?*aa            '打印数组所有元素
+    DMDEL  aa(0)    '删除数组a的第1个元素
+    ?*aa            '打印删除后的数组所有元素
+
+
+- name: DMINS
+  description: 数组的链表操作，插入后当前元素以及后面的所有元素往后移动位置。
+  parameters:
+  - name: arrayname
+    type: object
+    description: 数组名
+  - name: pos
+    type: Integer
+    description: 数组索引
+  - name: size
+    type: Integer
+    description: 要修改的个数，注意加上pos不要超过数组大小
+  example: >-
+    DIM aa(6)       '定义数组aa
+
+    FOR i=0 TO 4    '赋值0,1,2,3,4
+      aa(i)=i
+    NEXT
+
+    ?*aa            '打印数组所有元素
+
+    DMINS aa(0)      '插入元素0，原有的所有元素都向后移动一个位置
+    aa(0) = 10       '为插入元素赋值
+
+    ?*aa            '打印插入后的数组所有元素
+
+- name: DMSEARCH
+  description: 根据元素的值，搜索该元素在数组中的位置，返回找到的第一个数组索引，搜索不到返回-1。
+  returnType: Integer
+  parameters:
+  - name: arrayname
+    type: object
+    description: 数组名
+  - name: startpos
+    type: Integer
+    description: 搜索起始位置
+  - name: offset
+    type: Integer
+    description: 每次搜索跳过的间隔
+  - name: maxtimes
+    type: Integer
+    description: 最多判断的次数
+  - name: value
+    type: number
+    description: 搜索的数值
+  example: >-
+    DIM ruturn, value
+    DIM arr1(10)
+    FOR i = 0 TO 9
+            arr1(i) = i
+    NEXT
+    value = DMSEARCH(arr1,0,1,10,3)
+    ruturn = DMSEARCH(arr1,0,1,10,20)
+    IF value = 3 AND ruturn = -1 THEN
+        ?"查找成功"
+    ELSE
+        ?"查找失败"
+    END IF
+
+- name: DMSET
+  description: 数组区域赋值
+  parameters:
+  - name: arrayname
+    type: object
+    description: 数组名
+  - name: pos
+    type: Integer
+    description: 数组索引
+  - name: size
+    type: Integer
+    description: 长度
+  - name: data
+    type: number
+    description: 设置的数值
+  example: >-
+    DMSET  TABLE(0,10,2)    '数组区域赋值
+
+    FOR i=0 TO 9
+      PRINT "TABLE",i, TABLE(i)    '打印数组 
+    NEXT
+
+    DMSET  TABLE(0,10,3)    '数组区域赋值
+    FOR i=0 TO 9
+      PRINT  "TABLE",i, TABLE(i)    '打印数组
+    NEXT
+
+- name: SCAN_EVENT
+  description: >-
+    检测表达式的内容变化。
+
+    OFF- ON返回1，ON-OFF返回-1，不变返回0。
+
+    不要在循环内或者多任务调用同一个SUB内的SCAN_EVENT。
+
+    150810之后固件版本支持，之前版本用IN_EVENT和IN_SCAN。
+  parameters:
+  - name: expression
+    description: 任意有效的表达式，结果会转成BOOL类型
+  example: >-
+    '例一 输入信号扫描
+    WHILE 1
+      IF  SCAN_EVENT(IN(0)) > 0 THEN        'IN0上升沿触发
+        PRINT "IN0 ON"
+      ELSEIF  SCAN_EVENT(IN(0))<0 THEN     'IN0下降沿触发
+        PRINT "IN0 OFF"
+      ENDIF
+    WEND
+
+    '例二 寄存器、变量扫描
+
+    WHILE 1
+      IF  SCAN_EVENT(TABLE(0)) > 0 THEN       'TABLE0上升沿触发
+        PRINT "TABLE0 ON"
+      ELSEIF  SCAN_EVENT(TABLE(0))<0 THEN   'TABLE0下降沿触发
+        PRINT "TABLE0 OFF"
+      ENDIF
+    WEND
+
+    '在线命令操作table(0)，打印相关结果

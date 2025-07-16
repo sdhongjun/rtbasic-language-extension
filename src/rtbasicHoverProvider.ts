@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { RtBasicParser, RtBasicVariable, RtBasicStructure, RtBasicCFunction, RtBasicBuiltinFunction, RtBasicSymbol } from './rtbasicParser';
 import { RtBasicWorkspaceManager } from './rtbasicWorkspaceManager';
+import { RtBasicDocumentFormatter } from './rtbasicFormatter';
 
 // 使用RtBasicSymbol类型作为FileSymbols的别名，以保持代码一致性
 type FileSymbols = RtBasicSymbol;
@@ -444,11 +445,12 @@ export class RtBasicHoverProvider implements vscode.HoverProvider {
             );
 
             if (builtinFunction.description) {
-              content.appendMarkdown(`\n${builtinFunction.description}`);
+              content.appendMarkdown(`${builtinFunction.description}`);
             }
+
             if (builtinFunction.example) {
               content.appendCodeblock(
-                `\n\nExample:\n\n\`\`\`rtbasic\n${builtinFunction.example}\n\`\`\``, "rtbasic"
+                `\nExample:\n\`\`\`rtbasic\n${builtinFunction.example}\n\`\`\``, "rtbasic"
               );
             }
             
