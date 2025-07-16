@@ -159,10 +159,9 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
         }
 
         // 增加缩进的关键字
-        const increaseIndentRegex = /^(if.*then|sub|function|while|for|struct|structure|global\s+struct|global\s+structure|global\s+sub|global\s+function)/i;
-        const singleLineIfBlockRegx = /^\s*if\b[\s\S]+?\bthen\b[\s\S]+?(?:\s*\bend\s+if\b)?\s*(?:'.*)?$/i;
+        const increaseIndentRegex = /^(if.*then|sub\b|function\b|while\b|for\b|struct\b|structure\b|global\s+struct\b|global\s+sub\b|global\s+function\b)/i;
+        const singleLineIfBlockRegx = /^\s*if\b[\s\S]+?\bthen\b\s+\w+.*$/i;
         if (increaseIndentRegex.test(trimmedLine) &&
-            !trimmedLine.includes("'") && // 不在注释中
             !(singleLineIfBlockRegx.test(trimmedLine))) { // 不是单行if
             const currentIndent = this.indentStack[this.indentStack.length - 1] || 0;
             this.indentStack.push(currentIndent + 1);

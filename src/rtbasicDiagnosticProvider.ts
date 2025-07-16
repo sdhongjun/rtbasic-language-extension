@@ -226,7 +226,7 @@ export class RtBasicDiagnosticProvider {
                     const elseText = elseLine.text.trim();
                     
                     // 多行If块内的Else必须是独立的一行
-                    if (elseText.toLowerCase() !== 'else') {
+                    if (!/else(?:\s*'.*)?/i.test(elseText)) {
                         diagnostics.push(new vscode.Diagnostic(
                             elseBlock.range,
                             `多行If块内的Else必须是独立的一行`,

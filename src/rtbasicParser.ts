@@ -103,22 +103,22 @@ export class RtBasicParser {
     
     // If语句相关
     IF: {
-      START: /^If\b.*?\bThen\b(?:\s+([^'\r\n]*))?/i,
-      SINGLE_LINE: /^If\b.*?\bThen\b\s+(?!\s*')(?:[^'\r\n]+)(?=\s*(?:'|$))(?!\s*(?:ElseIf|Else|End\s+If)\b)/i,
-      END: /^End\s+If\b/i,
-      ELSEIF: /^ElseIf\b.*?(?:\bThen\b)?/i,
-      ELSE: /^Else\b/i,
+      START: /^If\b.+\bThen\b(?:\s*'.*)?/i,
+      SINGLE_LINE: /^^\s*if\b[\s\S]+?\bthen\b\s+\w+.*/i,
+      END: /^End\s*If\b(?:\s*'.*)?/i, // endif 或 end if均为有效块结束标识
+      ELSEIF: /^Else\s*If\b.*?(?:\bThen\b)?/i,
+      ELSE: /^Else\b(?:\s*'.*)?/i,
       ELSEIF_THEN_SINGLE_LINE: /^ElseIf\b.*?\bThen\b\s+[^'\r\n]+(?!\s+ElseIf\b|\s+Else\b|\s+End\s+If\b)/i
     },
     
     // 循环语句相关
     FOR: {
       START: /^For\b.*?\bTo\b.*$/i,
-      END: /^Next\b/i
+      END: /^Next\b(?:\s*'.*)?/i
     },
     WHILE: {
       START: /^While\b.*$/i,
-      END: /^Wend\b/i
+      END: /^Wend\b(?:\s*'.*)?/i
     },
     
     // Select语句相关
