@@ -108,6 +108,6 @@ formatting:
   default_indent: 4
   convert_tabs_to_spaces: true
   max_line_length: 120
-  split_single_line_if: true
+  split_single_line_if: false
   preserve_empty_lines: true
   align_function_parameters: true

@@ -65,7 +65,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     private protectStringContent(text: string): { processedText: string, stringMap: Map<string, string> } {
         const stringMap = new Map<string, string>();
         let stringCount = 0;
-        
+
         // 使用正则表达式匹配双引号字符串
         const stringRegex = /"([^"]*)"/g;
         const processedText = text.replace(stringRegex, (match) => {
@@ -74,10 +74,10 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
             stringCount++;
             return placeholder;
         });
-        
+
         return { processedText, stringMap };
     }
-    
+
     /**
      * 恢复字符串内容
      * @param text 处理后的文本
@@ -95,7 +95,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     // 转换关键字大小写
     private transformKeywordCase(text: string): string {
         const { passcal_word, multi_word_map } = this.config.keywords;
-        
+
         // 首先处理多关键字
         Object.entries(multi_word_map || {}).forEach(([pattern, replacement]) => {
             const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
@@ -106,7 +106,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
         const sortedLowercase = [...passcal_word]
             .filter(keyword => !keyword.includes(' ')) // 排除已处理的多关键字
             .sort((a, b) => b.length - a.length);
-        
+
         // 处理需要小写的单个关键字
         sortedLowercase.forEach(keyword => {
             const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
@@ -125,7 +125,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
             const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
             text = text.replace(regex, func);
         });
-        
+
         return text;
     }
 
@@ -138,12 +138,12 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
         // 保护字符串内容，避免错误匹配字符串中的关键字
         const { processedText, stringMap } = this.protectStringContent(line);
         const trimmedLine = processedText.trim().toLowerCase();
-        
+
         // 检查是否是注释行
         if (trimmedLine.startsWith("'")) {
             return this.indentStack[this.indentStack.length - 1] || 0;
         }
-        
+
         // 减少缩进的关键字
         const decreaseIndentRegex = /^(end\s+if|end\s+sub|end\s+function|end\s+struct|end\s+structure|wend|next)/i;
         if (decreaseIndentRegex.test(trimmedLine)) {
@@ -160,9 +160,10 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
 
         // 增加缩进的关键字
         const increaseIndentRegex = /^(if.*then|sub|function|while|for|struct|structure|global\s+struct|global\s+structure|global\s+sub|global\s+function)/i;
-        if (increaseIndentRegex.test(trimmedLine) && 
+        const singleLineIfBlockRegx = /^\s*if\b[\s\S]+?\bthen\b[\s\S]+?(?:\s*\bend\s+if\b)?\s*(?:'.*)?$/i;
+        if (increaseIndentRegex.test(trimmedLine) &&
             !trimmedLine.includes("'") && // 不在注释中
-            !(/^if.*then.*end\s*if/i.test(trimmedLine))) { // 不是单行if
+            !(singleLineIfBlockRegx.test(trimmedLine))) { // 不是单行if
             const currentIndent = this.indentStack[this.indentStack.length - 1] || 0;
             this.indentStack.push(currentIndent + 1);
             return currentIndent;
@@ -241,16 +242,16 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
     private formatLine(line: string, indentLevel: number, options: vscode.FormattingOptions): string {
         // 转换制表符
         line = this.handleTabConversion(line.trim(), options);
-        
+
         // 保护字符串内容
         const { processedText, stringMap } = this.protectStringContent(line);
-        
+
         // 应用关键字大小写转换
         let formattedText = this.transformKeywordCase(processedText);
 
         // 格式化函数参数列表
         formattedText = this.formatFunctionParams(formattedText);
-        
+
         // 恢复字符串内容
         formattedText = this.restoreStringContent(formattedText, stringMap);
 
@@ -316,15 +317,15 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
                 if (shouldSplitSingleLineIf && text.trim().toLowerCase().match(/^if.*then.*[^'\n]+$/i)) {
                     // 保护字符串内容，避免错误拆分包含"then"的字符串
                     const { processedText, stringMap } = this.protectStringContent(text);
-                    
+
                     // 在处理过的文本中查找"then"
                     if (processedText.toLowerCase().match(/\bthen\b/i)) {
                         const parts = processedText.split(/\bthen\b/i);
                         if (parts.length > 1 && !parts[1].trim().startsWith("'")) {
                             // 恢复字符串内容
-                            const ifPart = this.restoreStringContent(parts[0], stringMap) + ' Then';
+                            const ifPart = this.restoreStringContent(parts[0], stringMap) + 'Then';
                             const thenPart = this.restoreStringContent(parts[1], stringMap).trim();
-                            
+
                             // 避免拆分已经包含End If的单行if语句
                             if (!thenPart.toLowerCase().includes('end if')) {
                                 edits.push(vscode.TextEdit.replace(line.range, [

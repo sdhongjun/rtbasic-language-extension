@@ -351,7 +351,7 @@ export class RtBasicParser {
       // 解析结构体成员
       else if (currentStructure && text.toLowerCase().startsWith("dim")) {
         const memberMatch = text.match(
-          /^dim\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*([a-zA-Z0-9_]+)\s*\))?(?:\s*as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
+          /^dim\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\(\s*([a-zA-Z0-9_]+)\s*\))?(?:\s*as\s+([a-zA-Z_][a-zA-Z0-9_]*))?/i
         );
         if (memberMatch) {
           const varName = memberMatch[1];
