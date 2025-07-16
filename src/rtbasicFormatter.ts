@@ -159,7 +159,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
         }
 
         // 增加缩进的关键字
-        const increaseIndentRegex = /^(if.*then|sub\b|function\b|while\b|for\b|struct\b|structure\b|global\s+struct\b|global\s+sub\b|global\s+function\b)/i;
+        const increaseIndentRegex = /^(if.*then|sub\b|function\b|while\b|for\b|struct\b|global\s+struct\b|structure\b|global\s+structure\b|global\s+sub\b|global\s+function\b)/i;
         const singleLineIfBlockRegx = /^\s*if\b[\s\S]+?\bthen\b\s+\w+.*$/i;
         if (increaseIndentRegex.test(trimmedLine) &&
             !(singleLineIfBlockRegx.test(trimmedLine))) { // 不是单行if
@@ -238,15 +238,53 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
      * @param options 格式化选项
      * @returns 格式化后的行
      */
+    /**
+     * 格式化运算符，确保运算符前后有空格
+     * @param text 要处理的文本
+     * @returns 格式化后的文本
+     */
+    private formatOperators(text: string): string {
+        const OPERATOR_REGEX = /([+\-*/=]|<>|>>=|<<=|>>|<<|>=|<=|>|<)(?!=)/gi;
+        text = text.replace(OPERATOR_REGEX, ` $1 `);
+
+        // 处理逗号分隔符与连续空格
+        return text.split(/\s*,/).join(', ').replace(/\s+/g, ' ').trim();
+    }
+
+    /**
+     * Formats a single line of RTBASIC code by:
+     * - Handling tab conversions
+     * - Preserving comments (text after single quote)
+     * - Protecting string contents during transformations
+     * - Applying keyword case conversion
+     * - Formatting operators and function parameters
+     * - Restoring protected strings
+     * - Applying proper indentation
+     * @param line The input line to format
+     * @param indentLevel Number of indentation levels to apply
+     * @param options VS Code formatting options
+     * @returns The formatted line with proper indentation
+     */
     private formatLine(line: string, indentLevel: number, options: vscode.FormattingOptions): string {
         // 转换制表符
         line = this.handleTabConversion(line.trim(), options);
 
+        let procText = line;
+        let commentText = '';
+        let splitPartMatch = /^((?:[^'"]|"(?:[^"]|"")*")*?)?(\s*'.*)?$/g.exec(procText);
+        if (splitPartMatch) {
+            procText = splitPartMatch[1] || '';
+            commentText = splitPartMatch[2] || '';
+        }
+
         // 保护字符串内容
-        const { processedText, stringMap } = this.protectStringContent(line);
+        const { processedText, stringMap } = this.protectStringContent(procText);
 
         // 应用关键字大小写转换
         let formattedText = this.transformKeywordCase(processedText);
+
+        // 格式化运算符
+        formattedText = this.formatOperators(formattedText);
 
         // 格式化函数参数列表
         formattedText = this.formatFunctionParams(formattedText);
@@ -257,7 +295,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
         // 添加缩进
         const indentSize = options.tabSize || this.config.formatting.default_indent;
         const indentStr = options.insertSpaces || this.config.formatting.convert_tabs_to_spaces ? ' '.repeat(indentSize) : '\t';
-        return indentStr.repeat(indentLevel) + formattedText;
+        return indentStr.repeat(indentLevel) + formattedText + commentText;
     }
 
     /**
