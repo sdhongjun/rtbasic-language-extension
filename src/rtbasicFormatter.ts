@@ -244,7 +244,7 @@ export class RtBasicDocumentFormatter implements vscode.DocumentFormattingEditPr
      * @returns 格式化后的文本
      */
     private formatOperators(text: string): string {
-        const OPERATOR_REGEX = /([+\-*/=]|<>|>>=|<<=|>>|<<|>=|<=|>|<)(?!=)/gi;
+        const OPERATOR_REGEX = /([+\-*/=]|<>|>>=|<<=|>>|<<|>=|<=|(?<!\<)>|<(?!\>))(?!=)/gi;
         text = text.replace(OPERATOR_REGEX, ` $1 `);
 
         // 处理逗号分隔符与连续空格
